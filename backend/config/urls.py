@@ -20,9 +20,10 @@ urlpatterns = [
 
     # Token authentication (optional, you already have custom logins)
     path('api/token/', authview.obtain_auth_token),
+    path('api/accounts/', include('accounts.urls')),
 
     # API routes
-    path('api/', include(router.urls)),
+    path('api/', include('booking.urls')),
 ]
 
 # Media files
