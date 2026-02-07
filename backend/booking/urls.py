@@ -1,13 +1,11 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .views import DistrictViewSet, HospitalViewSet, DepartmentViewSet, BookingViewSet
-
-router = DefaultRouter()
-router.register(r'districts', DistrictViewSet)
-router.register(r'hospitals', HospitalViewSet)
-router.register(r'departments', DepartmentViewSet)
-router.register(r'bookings', BookingViewSet)
+from django.urls import path
+from .views import opd_sessions, available_tokens, book_token, district_list, hospital_list, department_list
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path('opd-sessions/', opd_sessions),
+    path('available-tokens/', available_tokens),
+    path('book-token/', book_token),
+    path('districts/', district_list),
+    path('hospitals/', hospital_list),
+    path('departments/', department_list),
 ]
