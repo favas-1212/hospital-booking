@@ -1,8 +1,11 @@
 import React, { useState } from "react";
 import { Container, Form, Button, Card } from "react-bootstrap";
-import { registerDoctor } from "../services/allApi"; // adjust path if needed
+import { registerDoctor } from "../services/allApi";
+import { Link } from "react-router";
+import { useNavigate } from "react-router";
 
 function DoctorRegister() {
+  const navigate = useNavigate();
   const [user, setUser] = useState({
     username: "",
     email: "",
@@ -12,11 +15,33 @@ function DoctorRegister() {
     phone: "",
   });
 
+  const [phoneError, setPhoneError] = useState("");
+
   // ---------------- Handle Change ----------------
   const handleChange = (e) => {
+    const { name, value } = e.target;
+
+    // ONLY phone validation added
+    if (name === "phone") {
+      // allow only + and numbers
+      if (!/^[+\d]*$/.test(value)) return;
+
+      setUser({
+        ...user,
+        phone: value,
+      });
+
+      if (!/^\+91[6789]\d{9}$/.test(value)) {
+        setPhoneError("Enter valid number like +919876543210");
+      } else {
+        setPhoneError("");
+      }
+      return;
+    }
+
     setUser({
       ...user,
-      [e.target.name]: e.target.value,
+      [name]: value,
     });
   };
 
@@ -24,9 +49,16 @@ function DoctorRegister() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // phone validation check
+    if (!/^\+91[6789]\d{9}$/.test(user.phone)) {
+      setPhoneError("Enter valid number like +919876543210");
+      return;
+    }
+
     try {
       const res = await registerDoctor(user);
       alert(res.data.message || "Doctor registered successfully!");
+      navigate("/doctorlogin");
 
       // reset form
       setUser({
@@ -118,15 +150,20 @@ function DoctorRegister() {
             <Form.Label>Phone</Form.Label>
             <Form.Control
               type="tel"
-              placeholder="Enter phone number"
+              placeholder="+91XXXXXXXXXX"
               name="phone"
               value={user.phone}
               onChange={handleChange}
+              isInvalid={!!phoneError}
               required
             />
+            <Form.Control.Feedback type="invalid">
+              {phoneError}
+            </Form.Control.Feedback>
           </Form.Group>
 
           <Button variant="primary" type="submit" className="w-100">
+            <Link to={"/doctorlogin"}></Link>
             Register
           </Button>
         </Form>
