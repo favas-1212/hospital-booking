@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Container, Form, Button, Card } from "react-bootstrap";
 import { registerDoctor } from "../services/allApi"; // adjust path if needed
+import { toast } from "react-toastify";
 
 function DoctorRegister() {
   const [user, setUser] = useState({
@@ -12,21 +13,76 @@ function DoctorRegister() {
     phone: "",
   });
 
+  const [phoneError, setPhoneError] = useState("");
+  const [emailError, setEmailError] = useState("");
+
   // ---------------- Handle Change ----------------
   const handleChange = (e) => {
-    setUser({
-      ...user,
-      [e.target.name]: e.target.value,
-    });
+    const { name, value } = e.target;
+
+    // Phone validation
+    if (name === "phone") {
+      let phoneValue = value;
+
+      // allow only + and numbers
+      if (!/^[+\d]*$/.test(phoneValue)) return;
+
+      // enforce +91
+      if (!phoneValue.startsWith("+91")) {
+        phoneValue = "+91" + phoneValue.replace(/^\+?91?/, "");
+      }
+
+      // limit length
+      if (phoneValue.length > 13) return;
+
+      setUser({ ...user, phone: phoneValue });
+
+      if (!/^\+91[6789]\d{9}$/.test(phoneValue)) {
+        setPhoneError("Enter valid number like +919876543210");
+      } else {
+        setPhoneError("");
+      }
+      return;
+    }
+
+    // Email validation
+    if (name === "email") {
+      setUser({ ...user, email: value });
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+      if (!emailRegex.test(value)) {
+        setEmailError("Enter a valid email address");
+      } else {
+        setEmailError("");
+      }
+      return;
+    }
+
+    // Default change
+    setUser({ ...user, [name]: value });
   };
 
   // ---------------- Register Doctor ----------------
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // final phone/email validation
+    if (!/^\+91[6789]\d{9}$/.test(user.phone)) {
+      setPhoneError("Enter valid number like +91XXXXXXXXXX");
+      toast.error("Invalid phone number");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!emailRegex.test(user.email)) {
+      setEmailError("Enter a valid email address");
+      toast.error("Invalid email address");
+      return;
+    }
+
     try {
       const res = await registerDoctor(user);
-      alert(res.data.message || "Doctor registered successfully!");
+      toast.success(res.data.message || "Doctor registered successfully!");
 
       // reset form
       setUser({
@@ -37,9 +93,11 @@ function DoctorRegister() {
         department: "",
         phone: "",
       });
+      setPhoneError("");
+      setEmailError("");
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.error || "Registration failed");
+      toast.error(err.response?.data?.error || "Registration failed");
     }
   };
 
@@ -49,9 +107,7 @@ function DoctorRegister() {
         className="shadow-sm"
         style={{ maxWidth: "500px", width: "100%", padding: "30px" }}
       >
-        <h3 className="text-center mb-4 text-primary">
-          👨‍⚕️ Doctor Registration
-        </h3>
+        <h3 className="text-center mb-4 text-primary">👨‍⚕️ Doctor Registration</h3>
 
         <Form onSubmit={handleSubmit}>
           <Form.Group className="mb-3">
@@ -74,8 +130,10 @@ function DoctorRegister() {
               name="email"
               value={user.email}
               onChange={handleChange}
+              isInvalid={!!emailError}
               required
             />
+            <Form.Control.Feedback type="invalid">{emailError}</Form.Control.Feedback>
           </Form.Group>
 
           <Form.Group className="mb-3">
@@ -118,12 +176,14 @@ function DoctorRegister() {
             <Form.Label>Phone</Form.Label>
             <Form.Control
               type="tel"
-              placeholder="Enter phone number"
+              placeholder="+91XXXXXXXXXX"
               name="phone"
               value={user.phone}
               onChange={handleChange}
+              isInvalid={!!phoneError}
               required
             />
+            <Form.Control.Feedback type="invalid">{phoneError}</Form.Control.Feedback>
           </Form.Group>
 
           <Button variant="primary" type="submit" className="w-100">

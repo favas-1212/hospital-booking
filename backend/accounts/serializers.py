@@ -53,20 +53,20 @@ class PatientSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True)
     email = serializers.EmailField(write_only=True)
     password = serializers.CharField(write_only=True)
-    otp_verified = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Patient
-        fields = [
-            "id", "username", "email", "password",
-            "full_name", "phone", "image",
-            "otp_verified", "created_at"
-        ]
+        fields = ["username", "email", "password", "full_name", "phone"]
 
     def create(self, validated_data):
+        username = validated_data.pop("username")
+        email = validated_data.pop("email")
+        password = validated_data.pop("password")
+
         user = User.objects.create_user(
-            username=validated_data.pop("username"),
-            email=validated_data.pop("email"),
-            password=validated_data.pop("password"),
+            username=username,
+            email=email,
+            password=password
         )
+
         return Patient.objects.create(user=user, **validated_data)

@@ -5,6 +5,9 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
+import random
+from django.core.cache import cache
+from django.core.mail import send_mail
 from twilio.rest import Client
 from .models import Patient, OPDStaff, Doctor
 from .serializers import (
@@ -13,6 +16,7 @@ from .serializers import (
     DoctorSerializer
 )
 
+# ========================= PATIENT =========================
 # ========================= PATIENT =========================
 class PatientView(viewsets.ModelViewSet):
     queryset = Patient.objects.all()
@@ -23,40 +27,89 @@ class PatientView(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
 
-    # Register Patient + Send OTP
+    # ---------------- Register ----------------
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        email = request.data.get("email")
+        if not email:
+            return Response({"error": "Email required"}, status=400)
+
+        if Patient.objects.filter(user__email=email).exists():
+            return Response({"error": "Email already registered"}, status=400)
+
+        otp = str(random.randint(100000, 999999))
+
+        cache.set(f"patient_register_{email}", request.data, timeout=300)
+        cache.set(f"patient_otp_{email}", otp, timeout=300)
+
+        send_mail(
+            "Your OTP Verification",
+            f"Your OTP is {otp}",
+            settings.EMAIL_HOST_USER,
+            [email],
+            fail_silently=False,
+        )
+
+        return Response({"message": "OTP sent to email"})
+
+    # ---------------- Verify OTP ----------------
+    @action(detail=False, methods=["post"])
+    def verify_otp(self, request):
+        email = request.data.get("email")
+        otp = request.data.get("otp")
+
+        stored_otp = cache.get(f"patient_otp_{email}")
+        user_data = cache.get(f"patient_register_{email}")
+
+        if not stored_otp or not user_data:
+            return Response({"error": "OTP expired or registration not found"}, status=400)
+        if stored_otp != otp:
+            return Response({"error": "Invalid OTP"}, status=400)
+
+        serializer = self.get_serializer(data=user_data)
         serializer.is_valid(raise_exception=True)
         patient = serializer.save()
+        patient.otp_verified = True
+        patient.save()
 
-        try:
-            client = Client(
-                settings.TWILIO_ACCOUNT_SID,
-                settings.TWILIO_AUTH_TOKEN
-            )
-            client.verify.v2.services(
-                settings.TWILIO_VERIFY_SERVICE_SID
-            ).verifications.create(
-                to=patient.phone,
-                channel="sms"
-            )
-        except Exception:
-            return Response(
-                {"error": "OTP service unavailable"},
-                status=500
-            )
+        cache.delete(f"patient_otp_{email}")
+        cache.delete(f"patient_register_{email}")
 
-        return Response(
-            {"message": "OTP sent successfully"},
-            status=201
+        token, _ = Token.objects.get_or_create(user=patient.user)
+
+        return Response({
+            "token": token.key,
+            "message": "Registration successful",
+            "otp_verified": True
+        })
+
+    # ---------------- Resend OTP ----------------
+    @action(detail=False, methods=["post"])
+    def resend_otp(self, request):
+        email = request.data.get("email")
+        user_data = cache.get(f"patient_register_{email}")
+
+        if not user_data:
+            return Response({"error": "Registration expired"}, status=400)
+
+        otp = str(random.randint(100000, 999999))
+        cache.set(f"patient_otp_{email}", otp, timeout=300)
+
+        send_mail(
+            "Resend OTP",
+            f"Your OTP is {otp}",
+            settings.EMAIL_HOST_USER,
+            [email],
+            fail_silently=False,
         )
-    
-        # ---------------- Patient Login (Username + Password) ----------------
+
+        return Response({"message": "OTP resent successfully"})
+
+    # ---------------- Login ----------------
     @action(detail=False, methods=["post"])
     def login(self, request):
         user = authenticate(
-        username=request.data.get("username"),
-        password=request.data.get("password")
+            username=request.data.get("username"),
+            password=request.data.get("password")
         )
 
         if not user or not hasattr(user, "patient"):
@@ -66,75 +119,7 @@ class PatientView(viewsets.ModelViewSet):
             return Response({"error": "OTP not verified"}, status=403)
 
         token, _ = Token.objects.get_or_create(user=user)
-
-        return Response({
-            "token": token.key,
-            "role": "patient"
-        })
-
-
-    # Resend OTP
-    @action(detail=False, methods=["post"])
-    def resend_otp(self, request):
-        phone = request.data.get("phone")
-        if not phone:
-            return Response({"error": "Phone required"}, status=400)
-
-        client = Client(
-            settings.TWILIO_ACCOUNT_SID,
-            settings.TWILIO_AUTH_TOKEN
-        )
-
-        client.verify.v2.services(
-            settings.TWILIO_VERIFY_SERVICE_SID
-        ).verifications.create(
-            to=phone,
-            channel="sms"
-        )
-
-        return Response({"message": "OTP resent"})
-
-    # Verify OTP + Token
-    @action(detail=False, methods=["post"])
-    def verify_otp(self, request):
-        phone = request.data.get("phone")
-        otp = request.data.get("otp")
-
-        if not phone or not otp:
-            return Response(
-                {"error": "Phone and OTP required"},
-                status=400
-            )
-
-        patient = Patient.objects.filter(phone=phone).first()
-        if not patient:
-            return Response({"error": "Patient not found"}, status=404)
-
-        client = Client(
-            settings.TWILIO_ACCOUNT_SID,
-            settings.TWILIO_AUTH_TOKEN
-        )
-
-        verification = client.verify.v2.services(
-            settings.TWILIO_VERIFY_SERVICE_SID
-        ).verification_checks.create(
-            to=phone,
-            code=otp
-        )
-
-        if verification.status != "approved":
-            return Response({"error": "Invalid OTP"}, status=400)
-
-        patient.otp_verified = True
-        patient.save()
-
-        token, _ = Token.objects.get_or_create(user=patient.user)
-
-        return Response({
-            "token": token.key,
-            "role": "patient"
-        })
-
+        return Response({"token": token.key, "role": "patient"})
 
 # ========================= OPD STAFF =========================
 class OPDStaffView(viewsets.ModelViewSet):

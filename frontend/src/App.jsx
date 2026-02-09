@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 
 import './App.css'
@@ -8,6 +10,7 @@ import Login from './Pages/Login'
 import PatientLogin from './Pages/PatientLogin'
 import Instructions from './Pages/Instructions'
 import PatientRegister from './Pages/PatientRegister'
+import VerifyOtp from './Pages/VerifyOtp'
 import DoctorLogin from './Pages/DoctorLogin'
 import DoctorRegister from './Pages/DoctorRegister'
 import Booking from './Pages/Booking'
@@ -28,6 +31,7 @@ function App() {
         <Route path='/login' element={<Login/>}/>
         <Route path='/instructions' element={<Instructions/>}/>
         <Route path='/patientregister' element={<PatientRegister/>}/>
+        <Route path='verifyotp' element={<verifyOtp/>}></Route>
         <Route path='/patientlogin' element={<PatientLogin/>}/>
         <Route path='/doctorlogin' element={<DoctorLogin/>}/>
         <Route path='/doctorregister' element={<DoctorRegister/>}/>
@@ -39,6 +43,14 @@ function App() {
 
 
        </Routes>
+
+       <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        pauseOnHover
+        draggable
+        theme="colored"
+      />
 
     </>
   )

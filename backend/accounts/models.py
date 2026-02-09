@@ -40,13 +40,10 @@ class Doctor(BaseProfile):
         return self.full_name
 
 
-class Patient(BaseProfile):
-    """
-    Patient account with OTP verification
-    """
+class Patient(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
     full_name = models.CharField(max_length=100)
-    image = models.ImageField(upload_to="patients/", blank=True, null=True)
-    otp = models.CharField(max_length=6, blank=True, null=True)
+    phone = models.CharField(max_length=15)
     otp_verified = models.BooleanField(default=False)
 
     def __str__(self):
