@@ -2,8 +2,11 @@ import React, { useState } from "react";
 import { Container, Form, Button, Card } from "react-bootstrap";
 import { registerDoctor } from "../services/allApi"; // adjust path if needed
 import { toast } from "react-toastify";
+import { Link } from "react-router";
+import { useNavigate } from "react-router";
 
 function DoctorRegister() {
+  const navigate = useNavigate();
   const [user, setUser] = useState({
     username: "",
     email: "",
@@ -82,7 +85,7 @@ function DoctorRegister() {
 
     try {
       const res = await registerDoctor(user);
-      toast.success(res.data.message || "Doctor registered successfully!");
+      alert(res.data.message || "Doctor registered successfully!");
 
       // reset form
       setUser({
@@ -181,12 +184,14 @@ function DoctorRegister() {
               value={user.phone}
               onChange={handleChange}
               isInvalid={!!phoneError}
+              isInvalid={!!phoneError}
               required
             />
             <Form.Control.Feedback type="invalid">{phoneError}</Form.Control.Feedback>
           </Form.Group>
 
           <Button variant="primary" type="submit" className="w-100">
+            <Link to={"/doctorlogin"}></Link>
             Register
           </Button>
         </Form>

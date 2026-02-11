@@ -13,7 +13,7 @@ function DoctorLogin() {
   // ---------------- Login Doctor ----------------
   const handleLogin = async () => {
     if (!email || !password) {
-      alert("Please enter email and password");
+      alert("Please enter username and password");
       return;
     }
 
@@ -79,6 +79,7 @@ function DoctorLogin() {
           onClick={handleLogin}
         >
           Login
+         <Link to={'/doctordashboard'}></Link> 
         </Button>
 
         <p className="mt-4 text-center">

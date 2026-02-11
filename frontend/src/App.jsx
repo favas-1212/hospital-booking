@@ -18,7 +18,8 @@ import ContactUs from './Pages/ContactUs'
 import DoctorDashboard from './Pages/DoctorDashboard'
 import "./App.css"
 import BookingDetails from './Pages/BookingDetails'
-// import DoctorDashboard from './Pages/DoctorDashboard'
+import PatientOtp from './Pages/PatientOtp'
+
 
 function App() {
   const [count, setCount] = useState(0)
@@ -33,13 +34,14 @@ function App() {
         <Route path='/patientregister' element={<PatientRegister/>}/>
         <Route path='verifyotp' element={<verifyOtp/>}></Route>
         <Route path='/patientlogin' element={<PatientLogin/>}/>
+        <Route path='/patientotp' element={<PatientOtp/>}/>
         <Route path='/doctorlogin' element={<DoctorLogin/>}/>
         <Route path='/doctorregister' element={<DoctorRegister/>}/>
         <Route path='/doctordashboard' element={<DoctorDashboard/>}/>
         <Route path='/booking' element={<Booking/>}/>
         <Route path='/contactus' element={<ContactUs/>}/>
         <Route path ='/bookingdetails' element={<BookingDetails/>}/>
-        {/* <Route path='/DoctorDashboard' element={<DoctorDashboard/>}/> */}
+        
 
 
        </Routes>

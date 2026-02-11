@@ -166,6 +166,7 @@ function PatientRegister() {
 
         <p className="text-center mt-3">
           Already have an account? <Link to="/patientlogin">Login</Link>
+          Already have an account? <Link to="/patientlogin">Login</Link>
         </p>
       </Card>
     </Container>

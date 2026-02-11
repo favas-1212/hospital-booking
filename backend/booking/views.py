@@ -3,8 +3,8 @@ from rest_framework.response import Response
 from .models import OPDSession, Booking,Department,District,Hospital
 from django.utils.timezone import now
 from .serializers import BookingSerializer, DepartmentSerializer, HospitalSerializer, DistrictSerializer
-from rest_framework.permissions import AllowAny
-
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import permission_classes
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -41,13 +41,17 @@ def available_tokens(request):
     })
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def book_token(request):
+    if not hasattr(request.user, "patient"):
+        return Response({"error": "Only patients can book"}, status=403)
+
     serializer = BookingSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
-    serializer.save()
+    serializer.save(patient=request.user.patient)
     return Response({"message": "Token booked successfully"}, status=201)
+
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
