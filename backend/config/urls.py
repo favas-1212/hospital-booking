@@ -14,16 +14,18 @@ router.register(r'doctors', views.DoctorView, basename='doctor')
 router.register(r'patients', views.PatientView, basename='patient')
 router.register(r'opdstaff', views.OPDStaffView, basename='opdstaff')
 
+# Add these for frontend dropdowns
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
 
     # Token authentication (optional, you already have custom logins)
     path('api/token/', authview.obtain_auth_token),
-    # path('api/accounts/', include('accounts.urls')),
 
     # API routes
-    path('api/booking/', include('booking.urls')),
+    path('api/', include(router.urls)),
+    path('api/booking/',include('booking.urls')),
 
     # main urls.py
     path('api/payments/', include('payments.urls')),

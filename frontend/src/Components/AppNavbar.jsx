@@ -1,9 +1,21 @@
 import React from "react";
 import { Navbar, Nav, Container } from "react-bootstrap";
-import { Link } from "react-router-dom";
-// import IMG from "..//assets/images/logoMedQ.jpeg"
+import { Link, useNavigate } from "react-router-dom";
 
 function AppNavbar() {
+  const navigate = useNavigate();
+
+  // Check if user is logged in
+  const token = localStorage.getItem("token");
+  const username = localStorage.getItem("username");
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("username");
+    navigate("/"); // redirect to landing page
+    window.location.reload(); // refresh to update UI
+  };
+
   return (
     <Navbar bg="primary" expand="lg" className="shadow-sm">
       <Container>
@@ -12,7 +24,6 @@ function AppNavbar() {
         </Navbar.Brand>
 
         <Navbar.Toggle aria-controls="basic-navbar-nav" />
-
         <Navbar.Collapse id="basic-navbar-nav">
           <Nav className="ms-auto align-items-lg-center gap-3">
             <Nav.Link as={Link} to="/" className="text-light">
@@ -25,9 +36,21 @@ function AppNavbar() {
               Contact Us
             </Nav.Link>
 
-            <Link className="btn btn-light text-dark" to="/login">
-              Login
-            </Link>
+            {token ? (
+              <>
+                <span className="text-light fw-bold">Hello, {username}</span>
+                <button
+                  className="btn btn-light text-dark"
+                  onClick={handleLogout}
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <Link className="btn btn-light text-dark" to="/login">
+                Login
+              </Link>
+            )}
           </Nav>
         </Navbar.Collapse>
       </Container>

@@ -17,6 +17,14 @@ class DepartmentSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'hospital']
 
 class BookingSerializer(serializers.ModelSerializer):
+    department_id = serializers.PrimaryKeyRelatedField(
+        queryset=Department.objects.all(),
+        source='department',  # maps department_id to department FK
+        write_only=True
+    )
+
     class Meta:
         model = Booking
-        fields = [ 'department', 'session', 'token_number', 'booking_date']
+        fields = ['department_id', 'session', 'token_number', 'booking_date']
+        read_only_fields = ['booking_date']
+        

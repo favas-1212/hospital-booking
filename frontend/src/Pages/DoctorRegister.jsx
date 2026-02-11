@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { Container, Form, Button, Card } from "react-bootstrap";
-import { registerDoctor } from "../services/allApi";
-import { Link } from "react-router";
-import { useNavigate } from "react-router";
+import { registerDoctor } from "../services/allApi"; // adjust path if needed
+import { toast } from "react-toastify";
+import { Link } from "react-router-dom";
 
 function DoctorRegister() {
-  const navigate = useNavigate();
+  
   const [user, setUser] = useState({
     username: "",
     email: "",
@@ -16,22 +16,30 @@ function DoctorRegister() {
   });
 
   const [phoneError, setPhoneError] = useState("");
+  const [emailError, setEmailError] = useState("");
 
   // ---------------- Handle Change ----------------
   const handleChange = (e) => {
     const { name, value } = e.target;
 
-    // ONLY phone validation added
+    // Phone validation
     if (name === "phone") {
+      let phoneValue = value;
+
       // allow only + and numbers
-      if (!/^[+\d]*$/.test(value)) return;
+      if (!/^[+\d]*$/.test(phoneValue)) return;
 
-      setUser({
-        ...user,
-        phone: value,
-      });
+      // enforce +91
+      if (!phoneValue.startsWith("+91")) {
+        phoneValue = "+91" + phoneValue.replace(/^\+?91?/, "");
+      }
 
-      if (!/^\+91[6789]\d{9}$/.test(value)) {
+      // limit length
+      if (phoneValue.length > 13) return;
+
+      setUser({ ...user, phone: phoneValue });
+
+      if (!/^\+91[6789]\d{9}$/.test(phoneValue)) {
         setPhoneError("Enter valid number like +919876543210");
       } else {
         setPhoneError("");
@@ -39,26 +47,44 @@ function DoctorRegister() {
       return;
     }
 
-    setUser({
-      ...user,
-      [name]: value,
-    });
+    // Email validation
+    if (name === "email") {
+      setUser({ ...user, email: value });
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+      if (!emailRegex.test(value)) {
+        setEmailError("Enter a valid email address");
+      } else {
+        setEmailError("");
+      }
+      return;
+    }
+
+    // Default change
+    setUser({ ...user, [name]: value });
   };
 
   // ---------------- Register Doctor ----------------
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // phone validation check
+    // final phone/email validation
     if (!/^\+91[6789]\d{9}$/.test(user.phone)) {
-      setPhoneError("Enter valid number like +919876543210");
+      setPhoneError("Enter valid number like +91XXXXXXXXXX");
+      toast.error("Invalid phone number");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!emailRegex.test(user.email)) {
+      setEmailError("Enter a valid email address");
+      toast.error("Invalid email address");
       return;
     }
 
     try {
       const res = await registerDoctor(user);
-      alert(res.data.message || "Doctor registered successfully!");
-      navigate("/doctorlogin");
+      toast.success(res.data.message || "Doctor registered successfully!");
 
       // reset form
       setUser({
@@ -69,9 +95,11 @@ function DoctorRegister() {
         department: "",
         phone: "",
       });
+      setPhoneError("");
+      setEmailError("");
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.error || "Registration failed");
+      toast.error(err.response?.data?.error || "Registration failed");
     }
   };
 
@@ -81,9 +109,7 @@ function DoctorRegister() {
         className="shadow-sm"
         style={{ maxWidth: "500px", width: "100%", padding: "30px" }}
       >
-        <h3 className="text-center mb-4 text-primary">
-          👨‍⚕️ Doctor Registration
-        </h3>
+        <h3 className="text-center mb-4 text-primary">👨‍⚕️ Doctor Registration</h3>
 
         <Form onSubmit={handleSubmit}>
           <Form.Group className="mb-3">
@@ -106,8 +132,10 @@ function DoctorRegister() {
               name="email"
               value={user.email}
               onChange={handleChange}
+              isInvalid={!!emailError}
               required
             />
+            <Form.Control.Feedback type="invalid">{emailError}</Form.Control.Feedback>
           </Form.Group>
 
           <Form.Group className="mb-3">
@@ -155,11 +183,10 @@ function DoctorRegister() {
               value={user.phone}
               onChange={handleChange}
               isInvalid={!!phoneError}
+             
               required
             />
-            <Form.Control.Feedback type="invalid">
-              {phoneError}
-            </Form.Control.Feedback>
+            <Form.Control.Feedback type="invalid">{phoneError}</Form.Control.Feedback>
           </Form.Group>
 
           <Button variant="primary" type="submit" className="w-100">
