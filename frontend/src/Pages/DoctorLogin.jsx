@@ -25,7 +25,7 @@ function DoctorLogin() {
 
       localStorage.setItem("token", res.data.token);
       alert("Doctor Login Successful");
-      navigate("/doctor/dashboard");
+      navigate("/doctordashboard");
     } catch (err) {
       alert(err.response?.data?.error || "Login failed");
     }
