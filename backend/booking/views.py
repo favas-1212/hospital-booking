@@ -1,119 +1,217 @@
-from rest_framework.decorators import api_view,permission_classes
-from rest_framework.response import Response
-from .models import OPDSession, Booking,Department,District,Hospital
-from django.utils.timezone import now
-from .serializers import BookingSerializer, DepartmentSerializer, HospitalSerializer, DistrictSerializer
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import permission_classes
+from rest_framework.response import Response
+from rest_framework import status
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
+from django.utils.timezone import now
+from datetime import timedelta
+
+from .models import (
+    District,
+    Hospital,
+    Department,
+    Booking,
+    OPDSession
+)
+
+from .serializers import (
+    DistrictSerializer,
+    HospitalSerializer,
+    DepartmentSerializer,
+    BookingSerializer,
+    BookingHistorySerializer
+)
+
+from accounts.models import Patient
+
+
+# ====================================
+# DISTRICT LIST
+# ====================================
+@api_view(["GET"])
+def district_list(request):
+
+    districts = District.objects.all()
+
+    serializer = DistrictSerializer(
+        districts,
+        many=True
+    )
+
+    return Response(serializer.data)
+
+
+# ====================================
+# HOSPITAL LIST
+# ====================================
+@api_view(["GET"])
+def hospital_list(request):
+
+    district_id = request.GET.get("district_id")
+
+    hospitals = Hospital.objects.filter(
+        district_id=district_id
+    )
+
+    serializer = HospitalSerializer(
+        hospitals,
+        many=True
+    )
+
+    return Response(serializer.data)
+
+
+# ====================================
+# DEPARTMENT LIST
+# ====================================
+@api_view(["GET"])
+def department_list(request):
+
+    hospital_id = request.GET.get("hospital_id")
+
+    departments = Department.objects.filter(
+        hospital_id=hospital_id
+    )
+
+    serializer = DepartmentSerializer(
+        departments,
+        many=True
+    )
+
+    return Response(serializer.data)
+
+
+# ====================================
+# OPD SESSION LIST
+# ====================================
+@api_view(["GET"])
 def opd_sessions(request):
-    return Response([
-        {
-            "key": choice[0],
-            "label": choice[1]
-        }
-        for choice in OPDSession.choices
-    ])
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
+    sessions = []
+
+    for session in OPDSession.choices:
+
+        sessions.append(
+            {
+                "value": session[0],
+                "label": session[1]
+            }
+        )
+
+    return Response(sessions)
+
+
+# ====================================
+# AVAILABLE TOKENS
+# ====================================
+@api_view(["GET"])
 def available_tokens(request):
-    department_id = request.GET.get('department')
-    session = request.GET.get('session')
 
-    TOTAL_TOKENS = 12
+    department_id = request.GET.get("department_id")
 
-    booked_tokens = Booking.objects.filter(
+    session = request.GET.get("session")
+
+    booking_date = request.GET.get("booking_date")
+
+    MAX_TOKENS = 20
+
+    booked = Booking.objects.filter(
         department_id=department_id,
         session=session,
-        booking_date=now().date()
-    ).values_list('token_number', flat=True)
-
-    available = [
-        token for token in range(1, TOTAL_TOKENS + 1)
-        if token not in booked_tokens
-    ]
+        booking_date=booking_date
+    ).count()
 
     return Response({
-        "available_tokens": available
+
+        "max_tokens": MAX_TOKENS,
+
+        "booked": booked,
+
+        "available": MAX_TOKENS - booked
+
     })
 
-@api_view(['POST'])
+
+# ====================================
+# BOOK TOKEN
+# ====================================
+@api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def book_token(request):
-    if not hasattr(request.user, "patient"):
-        return Response({"error": "Only patients can book"}, status=403)
 
-    serializer = BookingSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
+    serializer = BookingSerializer(
+        data=request.data,
+        context={"request": request}
+    )
 
-    serializer.save(patient=request.user.patient)
-    return Response({"message": "Token booked successfully"}, status=201)
+    if serializer.is_valid():
+
+        booking = serializer.save()
+
+        return Response(
+            BookingSerializer(booking).data,
+            status=status.HTTP_201_CREATED
+        )
+
+    return Response(
+        serializer.errors,
+        status=status.HTTP_400_BAD_REQUEST
+    )
 
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def district_list(request):
-    districts = District.objects.all()
-    serializer = DistrictSerializer(districts, many=True)
+# ====================================
+# BOOKING HISTORY
+# ====================================
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def booking_history(request):
+
+    patient = Patient.objects.get(
+        user=request.user
+    )
+
+    bookings = Booking.objects.filter(
+        patient=patient
+    ).order_by("-created_at")
+
+    serializer = BookingHistorySerializer(
+        bookings,
+        many=True
+    )
+
     return Response(serializer.data)
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def hospital_list(request):
-    district_id = request.GET.get('district')
 
-    hospitals = Hospital.objects.all()
-    if district_id:
-        hospitals = hospitals.filter(district_id=district_id)
+# ====================================
+# CANCEL BOOKING
+# ====================================
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def cancel_booking(request, booking_id):
 
-    serializer = HospitalSerializer(hospitals, many=True)
-    return Response(serializer.data)
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def department_list(request):
-    hospital_id = request.GET.get('hospital')
-
-    departments = Department.objects.all()
-    if hospital_id:
-        departments = departments.filter(hospital_id=hospital_id)
-
-    serializer = DepartmentSerializer(departments, many=True)
-    return Response(serializer.data)
-
-
-
-
-
-import razorpay
-from django.conf import settings
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def create_payment_order(request):
-    client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
-    amount = request.data.get("amount")
-    if not amount:
-        return Response({"error": "Amount is required"}, status=400)
+    patient = Patient.objects.get(
+        user=request.user
+    )
 
     try:
-        order = client.order.create({
-            "amount": amount,
-            "currency": "INR",
-            "payment_capture": 1
-        })
+
+        booking = Booking.objects.get(
+            id=booking_id,
+            patient=patient
+        )
+
+        booking.delete()
+
         return Response({
-            "order_id": order["id"],
-            "amount": order["amount"],
-            "currency": order["currency"]
+
+            "message": "Booking cancelled successfully"
+
         })
-    except Exception as e:
-        return Response({"error": str(e)}, status=500)
+
+    except Booking.DoesNotExist:
+
+        return Response({
+
+            "error": "Booking not found"
+
+        }, status=404)

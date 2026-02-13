@@ -1,241 +1,150 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import {
-  getDistricts,
-  getHospitals,
-  getDepartments,
-  getAvailableTokens,
-  bookToken
-} from "../services/allApi";
+import React, { useEffect, useState } from "react";
+import commonApi from "../services/commonApi";
+import { toast } from "react-toastify";
 
 function Booking() {
-  const navigate = useNavigate();
 
   const [districts, setDistricts] = useState([]);
   const [hospitals, setHospitals] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [districtId, setDistrictId] = useState("");
-  const [hospitalId, setHospitalId] = useState("");
-  const [departmentId, setDepartmentId] = useState("");
-  const [opdSession, setOpdSession] = useState("");
-  const [selectedToken, setSelectedToken] = useState("");
-  const [tokens, setTokens] = useState([]);
+
+  const [district, setDistrict] = useState("");
+  const [hospital, setHospital] = useState("");
+  const [department, setDepartment] = useState("");
+  const [session, setSession] = useState("");
+  const [bookingDate, setBookingDate] = useState("");
 
   // Load districts
   useEffect(() => {
-    getDistricts()
+
+    commonApi("/booking/districts/", "GET")
       .then(res => setDistricts(res.data))
-      .catch(err => console.log(err));
+      .catch(() => toast.error("Failed to load districts"));
+
   }, []);
 
-  // Load hospitals when district changes
+  // Load hospitals
   useEffect(() => {
-    if (!districtId) return;
-    getHospitals(districtId)
-      .then(res => setHospitals(res.data))
-      .catch(err => console.log(err));
-    setHospitalId("");
-    setDepartmentId("");
-    setDepartments([]);
-  }, [districtId]);
 
-  // Load departments when hospital changes
-  useEffect(() => {
-    if (!hospitalId) return;
-    getDepartments(hospitalId)
-      .then(res => setDepartments(res.data))
-      .catch(err => console.log(err));
-    setDepartmentId("");
-  }, [hospitalId]);
+    if (district) {
 
-  // Load tokens when department or session changes
+      commonApi(`/booking/hospitals/?district_id=${district}`, "GET")
+        .then(res => setHospitals(res.data))
+        .catch(() => toast.error("Failed to load hospitals"));
+
+    }
+
+  }, [district]);
+
+  // Load departments
   useEffect(() => {
-    if (!departmentId || !opdSession) {
-      setTokens([]);
-      setSelectedToken("");
+
+    if (hospital) {
+
+      commonApi(`/booking/departments/?hospital_id=${hospital}`, "GET")
+        .then(res => setDepartments(res.data))
+        .catch(() => toast.error("Failed to load departments"));
+
+    }
+
+  }, [hospital]);
+
+  // Book token
+  const handleBooking = async () => {
+
+    if (!department || !session || !bookingDate) {
+      toast.error("Please fill all fields");
       return;
     }
 
-    getAvailableTokens(departmentId, opdSession)
-      .then(res => {
-        setTokens(res.data.available_tokens);
-        setSelectedToken(""); // reset selected token whenever list changes
-      })
-      .catch(err => console.log(err));
-  }, [departmentId, opdSession]);
+    try {
 
-  const sessionCard = (value) =>
-    `card text-center p-3 h-100 ${
-      opdSession === value ? "border-primary bg-light" : "border"
-    }`;
+      const res = await commonApi(
+        "/booking/book-token/",
+        "POST",
+        {
+          department_id: department,
+          session: session,
+          booking_date: bookingDate
+        }
+      );
 
-  const tokenBox = (token) =>
-    `px-3 py-2 border rounded small ${
-      selectedToken === token
-        ? "bg-primary text-white border-primary"
-        : "bg-white"
-    }`;
-const handleBooking = async () => {
-  if (!departmentId || !opdSession || !selectedToken) {
-    alert("Please select department, session, and token.");
-    return;
-  }
+      toast.success(`Token booked! Token No: ${res.data.token_number}`);
 
-  const payload = {
-    department_id: Number(departmentId),
-    session: opdSession,
-    token_number: Number(selectedToken),
+    }
+    catch (err) {
+
+      toast.error(
+        err.response?.data?.detail ||
+        err.response?.data?.non_field_errors?.[0] ||
+        "Booking failed"
+      );
+
+    }
+
   };
 
-  console.log("Booking payload:", payload);
-
-  try {
-    const response = await bookToken(payload); // ✅ fixed
-
-    navigate("/bookingdetails", {
-      state: {
-        district: districts.find(d => d.id == districtId)?.name,
-        hospital: hospitals.find(h => h.id == hospitalId)?.name,
-        department: departments.find(dep => dep.id == departmentId)?.name,
-        session: opdSession,
-        token: selectedToken,
-        date: response.data.booking_date, // make sure API returns this
-      },
-    });
-  } catch (err) {
-    console.error("Booking failed:", err);
-    alert(err.response?.data?.error || err.message || "Booking failed. Please try again.");
-  }
-};
-
-
-
-
   return (
-    <div className="container py-5">
-      <div className="row justify-content-center">
-        <div className="col-md-6 col-lg-5">
-          <div className="card shadow border-0">
-            <div className="card-body p-4">
-              <h4 className="text-center mb-3 text-primary">Online OPD Booking</h4>
 
-              {/* District */}
-              <div className="mb-3">
-                <label className="form-label">District</label>
-                <select
-                  className="form-select"
-                  value={districtId}
-                  onChange={(e) => setDistrictId(e.target.value)}
-                >
-                  <option value="">Select District</option>
-                  {districts.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
-              </div>
+    <div>
 
-              {/* Hospital */}
-              <div className="mb-3">
-                <label className="form-label">Hospital</label>
-                <select
-                  className="form-select"
-                  value={hospitalId}
-                  onChange={(e) => setHospitalId(e.target.value)}
-                  disabled={!districtId}
-                >
-                  <option value="">Select Hospital</option>
-                  {hospitals.map(h => (
-                    <option key={h.id} value={h.id}>{h.name}</option>
-                  ))}
-                </select>
-              </div>
+      <select onChange={(e) => setDistrict(e.target.value)}>
+        <option>Select District</option>
 
-              {/* Department */}
-              <div className="mb-3">
-                <label className="form-label">Department / OPD</label>
-                <select
-                  className="form-select"
-                  value={departmentId}
-                  onChange={(e) => setDepartmentId(e.target.value)}
-                  disabled={!hospitalId}
-                >
-                  <option value="">Select Department</option>
-                  {departments.map(dep => (
-                    <option key={dep.id} value={dep.id}>{dep.name}</option>
-                  ))}
-                </select>
-              </div>
+        {districts.map(d => (
+          <option key={d.id} value={d.id}>
+            {d.name}
+          </option>
+        ))}
 
-              {/* OPD Session */}
-              <div className="mb-4">
-                <label className="form-label">OPD Session</label>
-                <div className="row g-2">
-                  <div className="col-6">
-                    <div
-                      className={sessionCard("MORNING")}
-                      style={{ cursor: "pointer" }}
-                      onClick={() => setOpdSession("MORNING")}
-                    >
-                      <strong>Morning</strong>
-                      <div className="text-muted small">10AM–12PM</div>
-                    </div>
-                  </div>
-                  <div className="col-6">
-                    <div
-                      className={sessionCard("EVENING")}
-                      style={{ cursor: "pointer" }}
-                      onClick={() => setOpdSession("EVENING")}
-                    >
-                      <strong>Evening</strong>
-                      <div className="text-muted small">2PM–5PM</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+      </select>
 
-              {/* Tokens */}
-              {opdSession && departmentId && (
-                <div className="mb-4">
-                  <label className="form-label">Select Token</label>
-                  <div className="d-flex flex-wrap gap-2">
-                    {tokens.length > 0 ? (
-                      tokens.map(token => (
-                        <div
-                          key={token}
-                          className={tokenBox(token)}
-                          style={{
-                            cursor: "pointer",
-                            width: "45px",
-                            height: "45px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontWeight: 600,
-                          }}
-                          onClick={() => setSelectedToken(token)}
-                        >
-                          {token}
-                        </div>
-                      ))
-                    ) : (
-                      <small className="text-muted">No tokens available for this session</small>
-                    )}
-                  </div>
-                </div>
-              )}
 
-              <button
-                className="btn btn-primary w-100"
-                disabled={!selectedToken}
-                onClick={handleBooking}
-              >
-                Book Token
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <select onChange={(e) => setHospital(e.target.value)}>
+        <option>Select Hospital</option>
+
+        {hospitals.map(h => (
+          <option key={h.id} value={h.id}>
+            {h.name}
+          </option>
+        ))}
+
+      </select>
+
+
+      <select onChange={(e) => setDepartment(e.target.value)}>
+        <option>Select Department</option>
+
+        {departments.map(dep => (
+          <option key={dep.id} value={dep.id}>
+            {dep.name}
+          </option>
+        ))}
+
+      </select>
+
+
+      <input
+        type="date"
+        onChange={(e) => setBookingDate(e.target.value)}
+      />
+
+
+      <button onClick={() => setSession("morning")}>
+        Morning
+      </button>
+
+      <button onClick={() => setSession("evening")}>
+        Evening
+      </button>
+
+
+      <button onClick={handleBooking}>
+        Book Token
+      </button>
+
     </div>
+
   );
 }
 

@@ -1,15 +1,32 @@
 from django.urls import path
-from .views import opd_sessions, available_tokens, book_token, district_list, hospital_list, department_list
-from .views import create_payment_order
 
+from .views import (
+    district_list,
+    hospital_list,
+    department_list,
+    opd_sessions,
+    available_tokens,
+    book_token,
+    booking_history,
+    cancel_booking
+)
 
 urlpatterns = [
-    path('opd-sessions/', opd_sessions),
-    path('available-tokens/', available_tokens),
-    path('book-token/', book_token),
-    path('districts/', district_list),
-    path('hospitals/', hospital_list),
-    path('departments/', department_list),
-    path("create-payment-order/", create_payment_order),
-    
+
+    path("districts/", district_list),
+
+    path("hospitals/", hospital_list),
+
+    path("departments/", department_list),
+
+    path("opd-sessions/", opd_sessions),
+
+    path("available-tokens/", available_tokens),
+
+    path("book-token/", book_token),
+
+    path("booking-history/", booking_history),
+
+    path("cancel-booking/<int:booking_id>/", cancel_booking),
+
 ]
