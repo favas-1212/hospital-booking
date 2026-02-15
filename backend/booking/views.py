@@ -5,6 +5,7 @@ from django.utils.timezone import now
 from .serializers import BookingSerializer, DepartmentSerializer, HospitalSerializer, DistrictSerializer
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import permission_classes
+from rest_framework.permissions import AllowAny
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
