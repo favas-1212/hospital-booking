@@ -1,7 +1,7 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils.timezone import now
-from datetime import timedelta
+from datetime import date, timedelta
 from accounts.models import Patient
 
 class District(models.Model):

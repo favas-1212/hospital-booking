@@ -11,34 +11,33 @@ const BASE_URL = "http://127.0.0.1:8000/api";
 
 // Patient registration
 export const registerPatient = (data) => {
-  return commonApi("http://127.0.0.1:8000/api/patients/", "POST", data);
+  return commonApi("/patients/", "POST", data);
 }
 
 // Verify OTP
 export const verifyOtp = (data) => {
-  return commonApi("http://127.0.0.1:8000/api/patients/verify_otp/", "POST", data);
+  return commonApi("/patients/verify_otp/", "POST", data);
 }
 
 // Resend OTP
 export const resendOtp = (data) => {
-  return commonApi("http://127.0.0.1:8000/api/patients/resend_otp/", "POST", data);
+  return commonApi("/patients/resend_otp/", "POST", data);
 }
 
 //login patient
 export const loginPatient = (data) => {
-  // Expects { username, password }
-  return commonApi("http://127.0.0.1:8000/api/patients/login/", "POST", data);
+  return commonApi("/patients/login/", "POST", data);
 };
 
 // ===================== DOCTOR =====================
 
 // Register doctor
 export const registerDoctor = (data) =>
-  commonApi(`${BASE_URL}/doctors/`, "POST", data);
+  commonApi("/doctors/", "POST", data);
 
 // Login doctor
 export const loginDoctor = (data) =>
-  commonApi(`${BASE_URL}/doctors/login/`, "POST", data);
+  commonApi("/doctors/login/", "POST", data);
 
 
 // ===================== OPD STAFF =====================
@@ -79,7 +78,7 @@ export const approveDoctor = (id, token) =>
   );
 
 
-//========================BOOKING====================
+
 // ======================== BOOKING =====================
 
 export const getDistricts = () => axios.get(`${BASE_URL}/booking/districts/`);
