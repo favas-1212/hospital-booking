@@ -42,43 +42,49 @@ function Booking() {
   }, [hospital]);
 
   // Book token
-  const handleBooking = async () => {
-    if (!district || !hospital || !department || !session || !bookingDate) {
-      toast.error("Please fill all fields");
-      return;
-    }
+const handleBooking = async () => {
+  if (!district || !hospital || !department || !session || !bookingDate) {
+    toast.error("Please fill all fields");
+    return;
+  }
 
-    try {
-      const res = await commonApi("/booking/book-token/", "POST", {
-        department_id: department,
+  try {
+    const res = await commonApi("/booking/book-token/", "POST", {
+      department_id: department,
+      session,
+      booking_date: bookingDate,
+    });
+
+    // ✅ LOG HERE (OUTSIDE OBJECT)
+    console.log("BOOKING RESPONSE:", res.data);
+
+    const selectedDistrict = districts.find(d => d.id == district);
+    const selectedHospital = hospitals.find(h => h.id == hospital);
+    const selectedDepartment = departments.find(dep => dep.id == department);
+
+    navigate("/bookingdetails", {
+      state: {
+        district: selectedDistrict?.name || "",
+        hospital: selectedHospital?.name || "",
+        department: selectedDepartment?.name || "",
         session,
-        booking_date: bookingDate,
-      });
+        date: bookingDate,
+        token: res.data.token_number,
 
-      // Get actual names before navigating
-      const selectedDistrict = districts.find(d => d.id.toString() === district.toString());
-      const selectedHospital = hospitals.find(h => h.id.toString() === hospital.toString());
-      const selectedDepartment = departments.find(dep => dep.id.toString() === department.toString());
+        // ✅ SAFE ID FIX
+        id: res.data.id || res.data.booking_id,
+      },
+    });
 
-      navigate("/bookingdetails", {
-        state: {
-          district: selectedDistrict?.name || "",
-          hospital: selectedHospital?.name || "",
-          department: selectedDepartment?.name || "",
-          session,
-          date: bookingDate,
-          token: res.data.token_number,
-          
-        },
-      });
-    } catch (err) {
-      toast.error(
-        err.response?.data?.detail ||
-        err.response?.data?.non_field_errors?.[0] ||
-        "Booking failed"
-      );
-    }
-  };
+  } catch (err) {
+    toast.error(
+      err.response?.data?.detail ||
+      err.response?.data?.non_field_errors?.[0] ||
+      "Booking failed"
+    );
+  }
+};
+
 
   return (
     <div className="container my-5">

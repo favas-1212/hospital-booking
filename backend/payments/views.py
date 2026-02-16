@@ -1,43 +1,129 @@
 import razorpay
+import hmac
+import hashlib
+
 from django.conf import settings
-from rest_framework.decorators import api_view
+from django.db import transaction
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-client = razorpay.Client(
-    auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
-)
+from booking.models import Booking
+from .models import Payment
+from .serializers import CreateOrderSerializer, VerifyPaymentSerializer
 
-@api_view(['POST'])
+
+# ======================================
+# CREATE RAZORPAY ORDER
+# ======================================
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def create_order(request):
-    amount = request.data.get("amount")  # in rupees
-    booking_id = request.data.get("booking_id")
 
-    razorpay_order = client.order.create({
-        "amount": int(amount) * 100,  # convert to paise
+    # ✅ Use serializer HERE (inside view)
+    serializer = CreateOrderSerializer(
+        data=request.data,
+        context={"request": request}
+    )
+    serializer.is_valid(raise_exception=True)
+
+    booking_id = serializer.validated_data["booking_id"]
+
+    booking = Booking.objects.get(
+        id=booking_id,
+        patient=request.user.patient
+    )
+
+    # Reuse existing pending payment
+    existing_payment = Payment.objects.filter(
+        booking=booking,
+        status="created"
+    ).first()
+
+    if existing_payment:
+        return Response({
+            "order_id": existing_payment.razorpay_order_id,
+            "amount": existing_payment.amount,
+            "razorpay_key": settings.RAZORPAY_KEY_ID,
+            "message": "Existing order reused"
+        })
+
+    amount = 10
+
+    client = razorpay.Client(auth=(
+        settings.RAZORPAY_KEY_ID,
+        settings.RAZORPAY_KEY_SECRET
+    ))
+
+    order = client.order.create({
+        "amount": amount * 100,  # convert to paise
         "currency": "INR",
         "payment_capture": 1
     })
 
+    Payment.objects.create(
+        patient=request.user.patient,
+        booking=booking,
+        amount=amount,
+        razorpay_order_id=order["id"]
+    )
+
     return Response({
-        "order_id": razorpay_order["id"],
-        "amount": razorpay_order["amount"],
-        "key": settings.RAZORPAY_KEY_ID
+        "order_id": order["id"],
+        "amount": amount,
+        "razorpay_key": settings.RAZORPAY_KEY_ID
     })
 
-@api_view(['POST'])
+
+# ======================================
+# VERIFY PAYMENT
+# ======================================
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def verify_payment(request):
-    data = request.data
+
+    # ✅ Use serializer here too
+    serializer = VerifyPaymentSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    data = serializer.validated_data
+    order_id = data["razorpay_order_id"]
+    payment_id = data["razorpay_payment_id"]
+    signature = data["razorpay_signature"]
 
     try:
-        client.utility.verify_payment_signature({
-            "razorpay_order_id": data["razorpay_order_id"],
-            "razorpay_payment_id": data["razorpay_payment_id"],
-            "razorpay_signature": data["razorpay_signature"]
-        })
+        payment = Payment.objects.get(razorpay_order_id=order_id)
+    except Payment.DoesNotExist:
+        return Response({"error": "Invalid order"}, status=404)
 
-        # Mark booking as confirmed here
-        return Response({"status": "Payment successful"})
+    if payment.status == "paid":
+        return Response({"message": "Already verified"})
 
-    except razorpay.errors.SignatureVerificationError:
-        return Response({"status": "Payment failed"}, status=400)
+    generated_signature = hmac.new(
+        settings.RAZORPAY_KEY_SECRET.encode(),
+        f"{order_id}|{payment_id}".encode(),
+        hashlib.sha256
+    ).hexdigest()
 
+    if generated_signature == signature:
+        with transaction.atomic():
+            payment.razorpay_payment_id = payment_id
+            payment.razorpay_signature = signature
+            payment.status = "paid"
+            payment.save()
+
+            booking = payment.booking
+            booking.payment_status = "paid"
+            booking.save()
+
+        return Response({"message": "Payment verified"})
+
+    else:
+        payment.status = "failed"
+        payment.save()
+
+        payment.booking.payment_status = "failed"
+        payment.booking.save()
+
+        return Response({"error": "Payment failed"}, status=400)

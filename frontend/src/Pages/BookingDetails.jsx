@@ -26,53 +26,132 @@ function BookingDetails() {
       </div>
     );
   }
+const handleBackWithPayment = async () => {
+  try {
+    const token = localStorage.getItem("token");
 
-  // const handlePayment = async () => {
-  //   try {
-  //     const amount = 50000; // ₹500 = 50000 paise
-  //     const orderRes = await axios.post(
-  //       "http://127.0.0.1:8000/api/booking/create-payment-order/",
-  //       { amount }
-  //     );
+    if (!token) {
+      alert("Login required");
+      navigate("/login");
+      return;
+    }
 
-      // const options = {
-      //   key: "YOUR_RAZORPAY_KEY_ID",
-      //   amount: orderRes.data.amount,
-      //   currency: orderRes.data.currency,
-      //   name: "Hospital Booking",
-      //   description: `Booking Token ${bookingData.token}`,
-      //   order_id: orderRes.data.order_id,
-      //   handler: async function (response) {
-      //     try {
-      //       await axios.post("http://127.0.0.1:8000/api/booking/book-token/", {
-      //         department_id: bookingData.department_id,
-      //         session: bookingData.session,
-      //         token_number: bookingData.token,
-      //         payment_id: response.razorpay_payment_id,
-      //       });
+    const res = await axios.post(
+      "http://127.0.0.1:8000/api/payments/create-order/",
+      { booking_id: Number(bookingData.id) },
+      {
+        headers: {
+          Authorization: `Token ${token}`, // ✅ FIX HERE
+        },
+      }
+    );
 
-      //       alert("Payment successful & Booking confirmed!");
-      //       navigate("/booking-success");
-      //     } catch (err) {
-      //       console.error("Booking failed after payment:", err);
-      //       alert("Booking failed after payment. Contact support.");
-      //     }
-      //   },
-      //   prefill: {
-      //     name: bookingData.full_name,
-      //     email: bookingData.email,
-      //     contact: bookingData.phone,
-      //   },
-      //   theme: { color: "#3399cc" },
-      // };
+    const { order_id, amount, razorpay_key } = res.data;
 
-  //     const rzp = new window.Razorpay(options);
-  //     rzp.open();
-  //   } catch (err) {
-  //     console.error("Payment initialization failed:", err);
-  //     alert("Payment failed. Try again.");
-  //   }
-  // };
+    const options = {
+      key: razorpay_key,
+      amount: amount * 100,
+      currency: "INR",
+      name: "Hospital Booking",
+      description: `Token ${bookingData.token}`,
+      order_id: order_id,
+
+      handler: async function (response) {
+        await axios.post(
+          "http://127.0.0.1:8000/api/payments/verify/",
+          {
+            razorpay_order_id: order_id,
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_signature: response.razorpay_signature,
+          },
+          {
+            headers: {
+              Authorization: `Token ${token}`, // ✅ FIX HERE TOO
+            },
+          }
+        );
+
+        alert("Payment success 🎉");
+        navigate("/booking");
+      },
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.open();
+  } catch (err) {
+    console.error(err.response?.data || err);
+    alert("Payment failed to start");
+  }
+  console.log("BOOKING DATA:", bookingData);
+
+};
+
+// const handleBackWithPayment = async () => {
+//   try {
+//     const token = localStorage.getItem("token");
+
+//     // 1️⃣ Create order from backend
+//     const res = await axios.post(
+//       "http://127.0.0.1:8000/api/payments/create-order/",
+//       { booking_id: bookingData.id },
+//       {
+//         headers: {
+//           Authorization: `Bearer ${token}`,
+//         },
+//       }
+//     );
+
+//     const { order_id, amount, razorpay_key } = res.data;
+
+//     // 2️⃣ Razorpay options
+//     const options = {
+//       key: razorpay_key,
+//       amount: amount * 100,
+//       currency: "INR",
+//       name: "Hospital Booking",
+//       description: `Token ${bookingData.token}`,
+//       order_id: order_id,
+
+//       handler: async function (response) {
+//         try {
+//           // 3️⃣ Verify payment
+//           await axios.post(
+//             "http://127.0.0.1:8000/api/payments/verify/",
+//             {
+//               razorpay_order_id: order_id,
+//               razorpay_payment_id: response.razorpay_payment_id,
+//               razorpay_signature: response.razorpay_signature,
+//             },
+//             {
+//               headers: {
+//                 Authorization: `Bearer ${token}`,
+//               },
+//             }
+//           );
+
+//           alert("Payment successful 🎉");
+//           navigate("/booking");
+//         } catch (err) {
+//           console.error(err);
+//           alert("Payment verification failed");
+//         }
+//       },
+
+//       prefill: {
+//         name: bookingData.patient_name || "Patient",
+//       },
+
+//       theme: { color: "#3399cc" },
+//     };
+
+//     const rzp = new window.Razorpay(options);
+//     rzp.open();
+//   } catch (err) {
+//     console.error(err);
+//     alert("Payment failed to start");
+//   }
+// };
+
 
   return (
     <div className="container py-5">
@@ -100,9 +179,10 @@ function BookingDetails() {
                 Pay & Confirm
               </button> */}
 
-              <button className="btn btn-secondary w-100" onClick={() => navigate("/booking")}>
-                Back to Booking
-              </button>
+                <button className="btn btn-secondary w-100" onClick={handleBackWithPayment}>
+                  Back to Booking & Pay
+                </button>
+                              
             </div>
           </div>
         </div>
