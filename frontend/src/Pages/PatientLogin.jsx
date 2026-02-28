@@ -1,67 +1,98 @@
 import React, { useState } from "react";
-import { Container, Card, Form, Button } from "react-bootstrap";
+import { Form, Button } from "react-bootstrap";
+import { toast } from "react-toastify";
 import { useNavigate, Link } from "react-router-dom";
-import { loginPatient } from "../services/allApi";
+import { loginPatient} from "../services/allApi";
 
 function PatientLogin() {
   const navigate = useNavigate();
-  const [data, setData] = useState({ username: "", password: "" });
 
-const handleLogin = async (e) => {
-  e.preventDefault();
-  try {
-    const res = await loginPatient(data);
+  const [user, setUser] = useState({
+    email: "",
+    password: "",
+  });
 
-    // Save token and username
-    localStorage.setItem("token", res.data.token);
-    localStorage.setItem("username", data.username); // store username for landing page
+  const handleChange = (e) => {
+    setUser({ ...user, [e.target.name]: e.target.value });
+  };
 
-    alert("Login successful");
+  const handleLogin = async (e) => {
+    e.preventDefault();
 
-    // Redirect to landing page
-    navigate("/"); 
-    window.location.reload(); // reload so landing page reflects login state
-  } catch (err) {
-    alert(err.response?.data?.error || "Login failed");
-  }
-};
+    if (!user.email || !user.password) {
+      toast.error("Please fill all fields");
+      return;
+    }
 
+    try {
+      const res = await loginPatient(user);
+
+      toast.success("Login Successful");
+
+      // store token if backend sends it
+      if (res.data.token) {
+        localStorage.setItem("patientToken", res.data.token);
+      }
+
+      navigate("/booking"); // redirect after login
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Login failed");
+    }
+  };
 
   return (
-    <Container className="d-flex justify-content-center align-items-center my-5">
-      <Card style={{ maxWidth: "400px", width: "100%" }} className="shadow-sm p-4">
-        <h3 className="text-center mb-4 text-primary">Patient Login</h3>
+    <>
+      <h4 className="text-center mb-4" style={{ color: "#0E7490" }}>
+        Patient Login
+      </h4>
 
-        <Form onSubmit={handleLogin}>
-          <Form.Group className="mb-3">
-            <Form.Label>Username</Form.Label>
-            <Form.Control
-              value={data.username}
-              onChange={(e) => setData({ ...data, username: e.target.value })}
-              required
-            />
-          </Form.Group>
+      <Form onSubmit={handleLogin}>
+        <Form.Group className="mb-3">
+          <Form.Label>Email</Form.Label>
+          <Form.Control
+            type="email"
+            name="email"
+            value={user.email}
+            onChange={handleChange}
+            required
+            style={{ borderRadius: "8px", padding: "10px" }}
+          />
+        </Form.Group>
 
-          <Form.Group className="mb-4">
-            <Form.Label>Password</Form.Label>
-            <Form.Control
-              type="password"
-              value={data.password}
-              onChange={(e) => setData({ ...data, password: e.target.value })}
-              required
-            />
-          </Form.Group>
+        <Form.Group className="mb-4">
+          <Form.Label>Password</Form.Label>
+          <Form.Control
+            type="password"
+            name="password"
+            value={user.password}
+            onChange={handleChange}
+            required
+            style={{ borderRadius: "8px", padding: "10px" }}
+          />
+        </Form.Group>
 
-          <Button type="submit" className="w-100">
-            Login
-          </Button>
-        </Form>
+        <Button
+          type="submit"
+          style={{
+            background: "linear-gradient(90deg, #0E7490, #14B8A6)",
+            border: "none",
+            width: "100%",
+            padding: "10px",
+            borderRadius: "8px",
+            fontWeight: "600",
+          }}
+        >
+          Login
+        </Button>
+      </Form>
 
-        <p className="text-center mt-3">
-          New user? <Link to="/patientregister">Register</Link>
-        </p>
-      </Card>
-    </Container>
+      <p className="text-center mt-3">
+        Don’t have an account?{" "}
+        <Link to="/patientregister" style={{ color: "#0E7490" }}>
+          Register
+        </Link>
+      </p>
+    </>
   );
 }
 

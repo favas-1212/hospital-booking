@@ -46,7 +46,7 @@ function PatientOtp() {
       alert("OTP verified successfully");
 
       // ✅ NAVIGATE TO booking.jsx
-      navigate("/patientlogin");
+      navigate("/login");
 
     } catch (err) {
       alert("Invalid OTP");

@@ -1,70 +1,188 @@
-import React from "react";
-import { Container, Card } from "react-bootstrap";
-import { Link } from "react-router-dom";
-import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
-import MedicalServicesOutlinedIcon from "@mui/icons-material/MedicalServicesOutlined";
-import AppNavbar from "../Components/AppNavbar";
-import Footer from "../Components/Footer";
+import React, { useState } from "react";
+import { Container, Card, Form, Button, Nav, InputGroup } from "react-bootstrap";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+import Visibility from "@mui/icons-material/Visibility";
+import VisibilityOff from "@mui/icons-material/VisibilityOff";
+import { loginPatient, loginDoctor } from "../services/allApi";
 
 function Login() {
+  const navigate = useNavigate();
+
+  const [activeTab, setActiveTab] = useState("patient");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+
+    if (!username || !password) {
+      toast.error("Please enter username and password");
+      return;
+    }
+
+    try {
+      let res;
+
+      if (activeTab === "patient") {
+        res = await loginPatient({ username, password });
+
+        localStorage.setItem("token", res.data.token);
+        localStorage.setItem("username", username);
+
+        toast.success("Patient Login Successful");
+
+        navigate("/");
+        window.location.reload();
+      } else {
+        res = await loginDoctor({ username, password });
+
+        localStorage.setItem("doctorToken", res.data.token);
+        localStorage.setItem("doctorUsername", username);
+
+        toast.success("Doctor Login Successful");
+
+        navigate("/doctordashboard");
+        window.location.reload();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Login failed");
+    }
+  };
+
   return (
-    <>
-     <AppNavbar/>
-    <Container
-   
-      
-      className="flex-grow-1 d-flex flex-column align-items-center justify-content-start px-3 pt-5 my-5 vh-100"
+    <div
+      style={{
+        background: "linear-gradient(135deg, #E6FFFA, #F0FDFA)",
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
     >
-      {/* App Title */}
-      
-      
-      {/* Welcome Text */}
-      <h4 className="fw-bold text-center m-5">Welcome to <span className="text-primary">MEDQUEUE</span></h4>
-      <p className="text-muted text-center mb-4">
-        Securely access your OPD queue <br />
-        management system.
-      </p>
+      <Container className="d-flex justify-content-center">
+        <Card
+          className="shadow"
+          style={{
+            width: "100%",
+            maxWidth: "420px",
+            borderRadius: "16px",
+            padding: "20px",
+            border: "none",
+          }}
+        >
+          <Card.Body>
+            <h4 className="text-center fw-bold mb-2">Welcome Back</h4>
 
-      {/* Login as Patient */}
-      <Card
-        className="w-100 shadow-sm mb-3"
-        style={{ maxWidth: "360px", borderRadius: "16px" }}
-      >
-        <Card.Body className="d-flex align-items-center gap-3 p-3">
-          <PersonOutlineIcon color="primary" fontSize="large" />
-          <div>
-            <h6 className="fw-bold mb-1 text-primary">Login as Patient</h6>
-            <small className="text-muted">
-              View token status and bookings
-            </small>
-          </div>
-        </Card.Body>
-        <Link to="/PatientLogin" className="stretched-link" />
-      </Card>
+            <p className="text-center text-muted mb-4">
+              Manage your healthcare journey seamlessly
+            </p>
 
-      {/* Login as Doctor */}
-      <Card
-        className="w-100 shadow-sm "
-        style={{ maxWidth: "360px", borderRadius: "16px" }}
-      >
-        <Card.Body className="d-flex align-items-center gap-3 p-3">
-          <MedicalServicesOutlinedIcon color="primary" fontSize="large" />
-          <div>
-            <h6 className="fw-bold mb-1 text-primary">Login as Doctor</h6>
-            <small className="text-muted">
-              Authorized hospital staff only
-            </small>
-          </div>
-        </Card.Body>
-        <Link to="/DoctorLogin" className="stretched-link" />
-      </Card>
-       
+            <Nav
+              variant="tabs"
+              activeKey={activeTab}
+              onSelect={(k) => {
+                setActiveTab(k);
+                setUsername("");
+                setPassword("");
+                setShowPassword(false);
+              }}
+              className="mb-4"
+            >
+              <Nav.Item>
+                <Nav.Link eventKey="patient">Patient Login</Nav.Link>
+              </Nav.Item>
+              <Nav.Item>
+                <Nav.Link eventKey="doctor">Doctor Login</Nav.Link>
+              </Nav.Item>
+            </Nav>
+
+            <Form onSubmit={handleLogin}>
+              <Form.Group className="mb-3">
+                <Form.Label>Username</Form.Label>
+                <Form.Control
+                  type="text"
+                  placeholder={
+                    activeTab === "patient"
+                      ? "Enter patient username"
+                      : "Enter doctor username"
+                  }
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  style={{ borderRadius: "8px" }}
+                />
+              </Form.Group>
+
+              {/* Password with Eye Icon */}
+              <Form.Group className="mb-3">
+                <Form.Label>Password</Form.Label>
+                <InputGroup>
+                  <Form.Control
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    style={{
+                      borderRadius: "8px 0 0 8px",
+                      borderRight: "none",
+                    }}
+                  />
+                  <InputGroup.Text
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      cursor: "pointer",
+                      background: "#E6FFFA",
+                      borderLeft: "none",
+                      borderRadius: "0 8px 8px 0",
+                    }}
+                  >
+                    {showPassword ? (
+                      <VisibilityOff style={{ color: "#0E7490" }} />
+                    ) : (
+                      <Visibility style={{ color: "#0E7490" }} />
+                    )}
+                  </InputGroup.Text>
+                </InputGroup>
+              </Form.Group>
+
+              <Button
+                type="submit"
+                style={{
+                  background: "linear-gradient(90deg, #0E7490, #14B8A6)",
+                  border: "none",
+                  width: "100%",
+                  padding: "10px",
+                  borderRadius: "8px",
+                  fontWeight: "600",
+                }}
+              >
+                Sign In
+              </Button>
+            </Form>
+
+            <p className="text-center mt-4 text-muted">
+              Don’t have an account?{" "}
+              <span
+                style={{ color: "#0E7490", cursor: "pointer" }}
+                onClick={() =>
+                  navigate(
+                    activeTab === "patient"
+                      ? "/patientregister"
+                      : "/doctorregister"
+                  )
+                }
+              >
+                Create Account
+              </span>
+            </p>
+          </Card.Body>
+        </Card>
       </Container>
-       <Footer/>
-</>
+    </div>
   );
 }
 
-
 export default Login;
-

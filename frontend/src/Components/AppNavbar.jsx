@@ -5,49 +5,99 @@ import { Link, useNavigate } from "react-router-dom";
 function AppNavbar() {
   const navigate = useNavigate();
 
-  // Check if user is logged in
   const token = localStorage.getItem("token");
   const username = localStorage.getItem("username");
 
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("username");
-    navigate("/"); // redirect to landing page
-    window.location.reload(); // refresh to update UI
+    navigate("/");
+    window.location.reload();
   };
 
   return (
-    <Navbar bg="primary" expand="lg" className="shadow-sm">
+    <Navbar
+      expand="lg"
+      style={{
+        background: "linear-gradient(90deg, #0E7490, #14B8A6)",
+      }}
+      className="shadow-sm py-3"
+    >
       <Container>
-        <Navbar.Brand as={Link} to="/" className="fw-bold fs-4 text-light">
+        {/* BRAND */}
+        <Navbar.Brand
+          as={Link}
+          to="/"
+          className="fw-bold fs-4 text-white"
+          style={{ letterSpacing: "1px" }}
+        >
           MEDQUEUE
         </Navbar.Brand>
 
-        <Navbar.Toggle aria-controls="basic-navbar-nav" />
+        <Navbar.Toggle
+          aria-controls="basic-navbar-nav"
+          className="bg-white"
+        />
+
         <Navbar.Collapse id="basic-navbar-nav">
-          <Nav className="ms-auto align-items-lg-center gap-3">
-            <Nav.Link as={Link} to="/" className="text-light">
+          <Nav className="ms-auto align-items-lg-center gap-4">
+
+            <Nav.Link
+              as={Link}
+              to="/"
+              className="text-white fw-semibold"
+            >
               Home
             </Nav.Link>
-            <Nav.Link as={Link} to="/instructions" className="text-light">
+
+            <Nav.Link
+              as={Link}
+              to="/instructions"
+              className="text-white fw-semibold"
+            >
               How it Works
             </Nav.Link>
-            <Nav.Link as={Link} to="/contactus" className="text-light">
+
+            <Nav.Link
+              as={Link}
+              to="/contactus"
+              className="text-white fw-semibold"
+            >
               Contact Us
             </Nav.Link>
 
             {token ? (
               <>
-                <span className="text-light fw-bold">Hello, {username}</span>
+                <span className="text-white fw-bold">
+                  Hello, {username}
+                </span>
+
                 <button
-                  className="btn btn-light text-dark"
                   onClick={handleLogout}
+                  style={{
+                    backgroundColor: "white",
+                    border: "none",
+                    padding: "6px 14px",
+                    borderRadius: "8px",
+                    color: "#0E7490",
+                    fontWeight: "600",
+                  }}
                 >
                   Logout
                 </button>
               </>
             ) : (
-              <Link className="btn btn-light text-dark" to="/login">
+              <Link
+                to="/login"
+                style={{
+                  backgroundColor: "white",
+                  padding: "6px 14px",
+                  borderRadius: "8px",
+                  color: "#0E7490",
+                  fontWeight: "600",
+                  textDecoration: "none",
+                }}
+              >
                 Login
               </Link>
             )}

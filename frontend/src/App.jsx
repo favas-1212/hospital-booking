@@ -19,6 +19,7 @@ import DoctorDashboard from './Pages/DoctorDashboard'
 import "./App.css"
 import BookingDetails from './Pages/BookingDetails'
 import PatientOtp from './Pages/PatientOtp'
+import MyBooking from './Pages/MyBooking';
 
 
 function App() {
@@ -33,7 +34,7 @@ function App() {
         <Route path='/instructions' element={<Instructions/>}/>
         <Route path='/patientregister' element={<PatientRegister/>}/>
         <Route path='verifyotp' element={<verifyOtp/>}></Route>
-        <Route path='/patientlogin' element={<PatientLogin/>}/>
+        {/* <Route path='/patientlogin' element={<PatientLogin/>}/> */}
         <Route path='/patientotp' element={<PatientOtp/>}/>
         <Route path='/doctorlogin' element={<DoctorLogin/>}/>
         <Route path='/doctorregister' element={<DoctorRegister/>}/>
@@ -41,6 +42,7 @@ function App() {
         <Route path='/booking' element={<Booking/>}/>
         <Route path='/contactus' element={<ContactUs/>}/>
         <Route path ='/bookingdetails' element={<BookingDetails/>}/>
+        <Route path='/my-booking'element={<MyBooking/>}/>
         
 
 
