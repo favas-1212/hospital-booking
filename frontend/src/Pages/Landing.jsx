@@ -4,7 +4,7 @@ import Nav from "react-bootstrap/Nav";
 import Navbar from "react-bootstrap/Navbar";
 import { Row, Col, Card } from "react-bootstrap";
 import Button from "@mui/material/Button";
-import { Link } from "react-router";
+import { Link } from "react-router-dom";
 import AppNavbar from "../Components/AppNavbar";
 import Footer from "../Components/Footer";
 
@@ -34,8 +34,14 @@ function Landing() {
 
               <div className="d-flex gap-3 mt-4">
              <Button variant="outlined"><Link className=" text-primary " style={{textDecoration:"none"}} to={'/instructions'}> How to Book Online</Link></Button>
-                <Button variant="outlined"> <Link className=" text-primary " style={{textDecoration:"none"}} to={'/login'}>Check My Token Status </Link></Button>
-              </div>
+
+<Button
+  variant="outlined"
+  component={Link}
+  to="/patient-dashboard"
+>
+  Check My Token Status
+</Button>              </div>
             </Col>
 
             <Col md={6} className="text-center">

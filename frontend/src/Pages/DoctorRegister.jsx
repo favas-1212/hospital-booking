@@ -1,122 +1,161 @@
-import React, { useState } from "react";
-import { Container, Form, Button, Card } from "react-bootstrap";
-import { registerDoctor } from "../services/allApi"; // adjust path if needed
+import React, { useEffect, useState } from "react";
+import { Container, Form, Button, Card, Spinner } from "react-bootstrap";
+import { registerDoctor } from "../services/allApi";
 import { toast } from "react-toastify";
-import { Link } from "react-router-dom";
+import axios from "axios";
 
 function DoctorRegister() {
-  
+
+  const BASE_URL = "http://127.0.0.1:8000/api/booking";
+
   const [user, setUser] = useState({
     username: "",
     email: "",
     password: "",
     full_name: "",
+    hospital: "",
     department: "",
     phone: "",
   });
 
+  const [districts, setDistricts] = useState([]);
+  const [hospitals, setHospitals] = useState([]);
+  const [departments, setDepartments] = useState([]);
+
+  const [selectedDistrict, setSelectedDistrict] = useState("");
   const [phoneError, setPhoneError] = useState("");
   const [emailError, setEmailError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  // ---------------- Handle Change ----------------
+  // ================= LOAD DISTRICTS =================
+  useEffect(() => {
+    axios.get(`${BASE_URL}/districts/`)
+      .then(res => setDistricts(res.data))
+      .catch(() => toast.error("Failed to load districts"));
+  }, []);
+
+  // ================= LOAD HOSPITALS =================
+  useEffect(() => {
+    if (!selectedDistrict) return;
+
+    axios.get(`${BASE_URL}/hospitals/?district_id=${selectedDistrict}`)
+      .then(res => setHospitals(res.data))
+      .catch(() => toast.error("Failed to load hospitals"));
+  }, [selectedDistrict]);
+
+  // ================= LOAD DEPARTMENTS =================
+  useEffect(() => {
+    if (!user.hospital) return;
+
+    axios.get(`${BASE_URL}/departments/?hospital_id=${user.hospital}`)
+      .then(res => setDepartments(res.data))
+      .catch(() => toast.error("Failed to load departments"));
+  }, [user.hospital]);
+
+  // ================= HANDLE CHANGE =================
   const handleChange = (e) => {
     const { name, value } = e.target;
 
-    // Phone validation
+    // PHONE VALIDATION
     if (name === "phone") {
       let phoneValue = value;
 
-      // allow only + and numbers
       if (!/^[+\d]*$/.test(phoneValue)) return;
 
-      // enforce +91
       if (!phoneValue.startsWith("+91")) {
         phoneValue = "+91" + phoneValue.replace(/^\+?91?/, "");
       }
 
-      // limit length
       if (phoneValue.length > 13) return;
 
       setUser({ ...user, phone: phoneValue });
 
       if (!/^\+91[6789]\d{9}$/.test(phoneValue)) {
         setPhoneError("Enter valid number like +919876543210");
-      } else {
-        setPhoneError("");
-      }
+      } else setPhoneError("");
+
       return;
     }
 
-    // Email validation
+    // EMAIL VALIDATION
     if (name === "email") {
       setUser({ ...user, email: value });
 
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-      if (!emailRegex.test(value)) {
-        setEmailError("Enter a valid email address");
-      } else {
-        setEmailError("");
-      }
+      setEmailError(emailRegex.test(value) ? "" : "Invalid email");
+
       return;
     }
 
-    // Default change
-    setUser({ ...user, [name]: value });
+    // Convert FK values to number
+    setUser({
+      ...user,
+      [name]: name === "hospital" || name === "department"
+        ? Number(value)
+        : value
+    });
   };
 
-  // ---------------- Register Doctor ----------------
+  // ================= SUBMIT =================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // final phone/email validation
-    if (!/^\+91[6789]\d{9}$/.test(user.phone)) {
-      setPhoneError("Enter valid number like +91XXXXXXXXXX");
-      toast.error("Invalid phone number");
+    if (phoneError || emailError) {
+      toast.error("Fix validation errors first");
       return;
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-    if (!emailRegex.test(user.email)) {
-      setEmailError("Enter a valid email address");
-      toast.error("Invalid email address");
+    if (!user.hospital || !user.department) {
+      toast.error("Select hospital and department");
       return;
     }
 
     try {
-      const res = await registerDoctor(user);
-      toast.success(res.data.message || "Doctor registered successfully!");
+      setLoading(true);
 
-      // reset form
+      await registerDoctor(user);
+
+      toast.success("Doctor registered! Waiting for OPD approval");
+
       setUser({
         username: "",
         email: "",
         password: "",
         full_name: "",
+        hospital: "",
         department: "",
         phone: "",
       });
-      setPhoneError("");
-      setEmailError("");
+
+      setSelectedDistrict("");
+      setHospitals([]);
+      setDepartments([]);
+
     } catch (err) {
-      console.error(err);
-      toast.error(err.response?.data?.error || "Registration failed");
+      toast.error(
+        err.response?.data?.error ||
+        err.response?.data?.detail ||
+        "Registration failed"
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <Container className="d-flex justify-content-center align-items-center my-5">
-      <Card
-        className="shadow-sm"
-        style={{ maxWidth: "500px", width: "100%", padding: "30px" }}
-      >
-        <h3 className="text-center mb-4 text-primary">👨‍⚕️ Doctor Registration</h3>
+    <Container className="d-flex justify-content-center my-5">
+      <Card style={{ maxWidth: "500px", width: "100%" }} className="p-4 shadow">
+
+        <h3 className="text-center text-primary mb-4">
+          👨‍⚕️ Doctor Registration
+        </h3>
 
         <Form onSubmit={handleSubmit}>
+
+          {/* USERNAME */}
           <Form.Group className="mb-3">
             <Form.Label>Username</Form.Label>
             <Form.Control
-              type="text"
-              placeholder="Enter username"
               name="username"
               value={user.username}
               onChange={handleChange}
@@ -124,25 +163,26 @@ function DoctorRegister() {
             />
           </Form.Group>
 
+          {/* EMAIL */}
           <Form.Group className="mb-3">
             <Form.Label>Email</Form.Label>
             <Form.Control
-              type="email"
-              placeholder="Enter email"
               name="email"
               value={user.email}
               onChange={handleChange}
               isInvalid={!!emailError}
               required
             />
-            <Form.Control.Feedback type="invalid">{emailError}</Form.Control.Feedback>
+            <Form.Control.Feedback type="invalid">
+              {emailError}
+            </Form.Control.Feedback>
           </Form.Group>
 
+          {/* PASSWORD */}
           <Form.Group className="mb-3">
             <Form.Label>Password</Form.Label>
             <Form.Control
               type="password"
-              placeholder="Enter password"
               name="password"
               value={user.password}
               onChange={handleChange}
@@ -150,11 +190,10 @@ function DoctorRegister() {
             />
           </Form.Group>
 
+          {/* FULL NAME */}
           <Form.Group className="mb-3">
             <Form.Label>Full Name</Form.Label>
             <Form.Control
-              type="text"
-              placeholder="Enter full name"
               name="full_name"
               value={user.full_name}
               onChange={handleChange}
@@ -162,37 +201,86 @@ function DoctorRegister() {
             />
           </Form.Group>
 
+          {/* DISTRICT */}
+          <Form.Group className="mb-3">
+            <Form.Label>District</Form.Label>
+            <Form.Select
+              value={selectedDistrict}
+              onChange={(e) => {
+                const districtId = e.target.value;
+                setSelectedDistrict(districtId);
+
+                setHospitals([]);
+                setDepartments([]);
+
+                setUser(prev => ({
+                  ...prev,
+                  hospital: "",
+                  department: ""
+                }));
+              }}
+              required
+            >
+              <option value="">Select District</option>
+              {districts.map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </Form.Select>
+          </Form.Group>
+
+          {/* HOSPITAL */}
+          <Form.Group className="mb-3">
+            <Form.Label>Hospital</Form.Label>
+            <Form.Select
+              name="hospital"
+              value={user.hospital}
+              onChange={handleChange}
+              disabled={!selectedDistrict}
+              required
+            >
+              <option value="">Select Hospital</option>
+              {hospitals.map(h => (
+                <option key={h.id} value={h.id}>{h.name}</option>
+              ))}
+            </Form.Select>
+          </Form.Group>
+
+          {/* DEPARTMENT */}
           <Form.Group className="mb-3">
             <Form.Label>Department</Form.Label>
-            <Form.Control
-              type="text"
-              placeholder="Enter department"
+            <Form.Select
               name="department"
               value={user.department}
               onChange={handleChange}
+              disabled={!user.hospital}
               required
-            />
+            >
+              <option value="">Select Department</option>
+              {departments.map(dep => (
+                <option key={dep.id} value={dep.id}>{dep.name}</option>
+              ))}
+            </Form.Select>
           </Form.Group>
 
+          {/* PHONE */}
           <Form.Group className="mb-4">
             <Form.Label>Phone</Form.Label>
             <Form.Control
-              type="tel"
-              placeholder="+91XXXXXXXXXX"
               name="phone"
               value={user.phone}
               onChange={handleChange}
               isInvalid={!!phoneError}
-             
               required
             />
-            <Form.Control.Feedback type="invalid">{phoneError}</Form.Control.Feedback>
+            <Form.Control.Feedback type="invalid">
+              {phoneError}
+            </Form.Control.Feedback>
           </Form.Group>
 
-          <Button variant="primary" type="submit" className="w-100">
-            <Link to={"/doctorlogin"}></Link>
-            Register
+          <Button type="submit" className="w-100" disabled={loading}>
+            {loading ? <Spinner size="sm" animation="border" /> : "Register"}
           </Button>
+
         </Form>
       </Card>
     </Container>
