@@ -16,6 +16,8 @@ from .serializers import (
     DoctorSerializer
 )
 
+
+
 # ========================= PATIENT =========================
 # ========================= PATIENT =========================
 class PatientView(viewsets.ModelViewSet):
@@ -122,6 +124,10 @@ class PatientView(viewsets.ModelViewSet):
         return Response({"token": token.key, "role": "patient"})
 
 # ========================= OPD STAFF =========================
+
+
+
+
 class OPDStaffView(viewsets.ModelViewSet):
     queryset = OPDStaff.objects.all()
     serializer_class = OPDStaffSerializer
@@ -131,29 +137,46 @@ class OPDStaffView(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
 
-    # OPD Login
+    # 🔒 Limit data visibility
+    def get_queryset(self):
+        user = self.request.user
+
+        if hasattr(user, "opdstaff"):
+            # OPD can only see staff from same hospital
+            return OPDStaff.objects.filter(
+                hospital=user.opdstaff.hospital
+            )
+
+        return OPDStaff.objects.none()
+
+    # ---------------- OPD LOGIN ----------------
     @action(detail=False, methods=["post"])
     def login(self, request):
-        user = authenticate(
-            username=request.data.get("username"),
-            password=request.data.get("password")
-        )
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        user = authenticate(username=username, password=password)
 
         if not user or not hasattr(user, "opdstaff"):
             return Response(
                 {"error": "Invalid OPD credentials"},
-                status=401
+                status=status.HTTP_401_UNAUTHORIZED
             )
 
         token, _ = Token.objects.get_or_create(user=user)
+        opd = user.opdstaff
 
         return Response({
             "token": token.key,
-            "role": "opd"
+            "role": "opd",
+            "opd_id": opd.id,
+            "hospital_id": opd.hospital.id
         })
 
 
 # ========================= DOCTOR =========================
+
+
 class DoctorView(viewsets.ModelViewSet):
     queryset = Doctor.objects.all()
     serializer_class = DoctorSerializer
@@ -163,45 +186,61 @@ class DoctorView(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
 
-    # Doctor Login
+    # ---------------- DOCTOR LOGIN ----------------
     @action(detail=False, methods=["post"])
     def login(self, request):
-        user = authenticate(
-            username=request.data.get("username"),
-            password=request.data.get("password")
-        )
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        user = authenticate(username=username, password=password)
 
         if not user or not hasattr(user, "doctor"):
             return Response(
                 {"error": "Invalid doctor credentials"},
-                status=401
+                status=status.HTTP_401_UNAUTHORIZED
             )
 
         doctor = user.doctor
+
         if not doctor.is_approved:
             return Response(
                 {"error": "Doctor not approved"},
-                status=403
+                status=status.HTTP_403_FORBIDDEN
             )
 
         token, _ = Token.objects.get_or_create(user=user)
 
         return Response({
             "token": token.key,
-            "role": "doctor"
+            "role": "doctor",
+            "doctor_id": doctor.id,
+            "hospital_id": doctor.hospital.id
         })
 
-    # OPD approves Doctor
+    # ---------------- APPROVE DOCTOR ----------------
     @action(detail=True, methods=["patch"])
     def approve(self, request, pk=None):
+
+        # Only OPD staff can approve
         if not hasattr(request.user, "opdstaff"):
             return Response(
-                {"error": "Only OPD can approve doctors"},
-                status=403
+                {"error": "Only OPD staff can approve doctors"},
+                status=status.HTTP_403_FORBIDDEN
             )
 
+        opd_staff = request.user.opdstaff
         doctor = self.get_object()
+
+        # ✅ VERY IMPORTANT: hospital check
+        if doctor.hospital != opd_staff.hospital:
+            return Response(
+                {"error": "You can only approve doctors from your hospital"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         doctor.is_approved = True
         doctor.save()
 
-        return Response({"message": "Doctor approved"})
+        return Response({
+            "message": "Doctor approved successfully"
+        })

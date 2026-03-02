@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.utils.timezone import now
 from datetime import date, timedelta
 from accounts.models import Patient
+from accounts.models import Doctor
 
 class District(models.Model):
     name = models.CharField(max_length=100)
@@ -32,26 +33,34 @@ class OPDSession(models.TextChoices):
 
 
 class Booking(models.Model):
+
+    doctor = models.ForeignKey(
+        Doctor,
+        on_delete=models.CASCADE,
+        related_name="bookings"
+    )
+
+    walkin_name = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True
+    )
+
     patient = models.ForeignKey(
         Patient,
         on_delete=models.CASCADE,
-        related_name="bookings"
+        related_name="bookings",
+        null=True,      # allow null
+        blank=True      # allow blank in forms/admin
     )
-
-    department = models.ForeignKey(
-        Department,
-        on_delete=models.CASCADE,
-        related_name="bookings"
-    )
-
     session = models.CharField(
-    max_length=10,
-    choices=OPDSession.choices
+        max_length=10,
+        choices=OPDSession.choices
     )
 
     booking_date = models.DateField()
 
-    token_number = models.IntegerField()
+    token_number = models.PositiveIntegerField()
 
     payment_status = models.CharField(
         max_length=20,
@@ -59,40 +68,38 @@ class Booking(models.Model):
             ("pending", "Pending"),
             ("paid", "Paid"),
             ("failed", "Failed"),
+            ("offline", "Offline"),
         ),
         default="pending"
     )
 
+    status = models.CharField(
+        max_length=20,
+        choices=(
+            ("waiting", "Waiting"),
+            ("consulting", "Consulting"),
+            ("done", "Done"),
+        ),
+        default="waiting"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
-
-    # =========================
-    # Constraints
-    # =========================
     class Meta:
-
-        # Prevent duplicate token number
-        unique_together = (
-            "department",
-            "session",
-            "booking_date",
-            "token_number"
-        )
-
-        # Prevent patient multiple booking same day
         constraints = [
+            models.UniqueConstraint(
+                fields=["doctor", "session", "booking_date", "token_number"],
+                name="unique_token_per_doctor_session"
+            ),
             models.UniqueConstraint(
                 fields=["patient", "booking_date"],
                 name="unique_patient_per_day"
             )
         ]
 
+        ordering = ["booking_date", "session", "token_number"]
 
-    # =========================
-    # Validation
-    # =========================
     def clean(self):
-
         today = date.today()
         last_date = today + timedelta(days=7)
 
@@ -102,7 +109,23 @@ class Booking(models.Model):
         if self.booking_date > last_date:
             raise ValidationError("Booking allowed only next 7 days")
 
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
+        if self.patient:
+            name = self.patient.full_name
+        else:
+            name = self.walkin_name or "Walk-in"
+        return f"{name} - {self.booking_date} - Token {self.token_number}"
+    
+    
+class OPDDay(models.Model):
+    doctor = models.ForeignKey("accounts.Doctor", on_delete=models.CASCADE)
+    date = models.DateField()
+    started_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=False)
 
-        return f"{self.patient} - {self.booking_date} - Token {self.token_number}"
+    class Meta:
+        unique_together = ("doctor", "date")

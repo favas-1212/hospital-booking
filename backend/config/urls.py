@@ -25,7 +25,7 @@ urlpatterns = [
 
     # API routes
     path('api/', include(router.urls)),
-    path('api/booking/',include('booking.urls')),
+    path('api/booking/', include('booking.urls')),
 
     # main urls.py
     path('api/payments/', include('payments.urls')),
