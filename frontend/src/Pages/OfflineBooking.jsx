@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "react-toastify";
-import { fetchTokens, bookWalkinToken } from "../services/allApi"; // API functions
+import { fetchTokens, bookWalkinToken } from "../services/allApi";
 import { useNavigate } from "react-router-dom";
 
 function OfflineBooking({ doctor, session, date, onClose }) {
@@ -19,11 +19,10 @@ function OfflineBooking({ doctor, session, date, onClose }) {
   // ==============================
   const loadTokens = async () => {
     if (!doctor || !session || !date) return;
+
     setLoadingTokens(true);
     try {
       const res = await fetchTokens(doctor.doctor_id, session, date);
-      
-      // Some API wrappers return data directly, some in res.data
       const data = res?.data || res;
 
       setAvailableTokens(data.available_walkin_tokens || []);
@@ -46,26 +45,28 @@ function OfflineBooking({ doctor, session, date, onClose }) {
   // Handle Walk-in Booking
   // ==============================
   const handleOfflineBooking = async () => {
-    if (!patientName) {
+    if (!patientName.trim()) {
       toast.error("Patient name is required");
       return;
     }
+
     if (!selectedToken) {
-      toast.error("Please select a token");
+      toast.error("No walk-in tokens available");
       return;
     }
 
     setLoading(true);
+
     try {
       const res = await bookWalkinToken({
         doctor_id: doctor.doctor_id,
         session,
         booking_date: date,
         token_number: selectedToken,
-        patient_name: patientName,
+        patient_name: patientName.trim(),
+        status: "approved", // 🔥 auto approve walk-in
       });
 
-      // Normalize response
       const bookingData = res?.data || res;
 
       if (!bookingData?.id) {
@@ -75,10 +76,10 @@ function OfflineBooking({ doctor, session, date, onClose }) {
       }
 
       toast.success(
-        `Walk-in token #${bookingData.token_number} booked for ${bookingData.patient_name}`
+        `Walk-in token #${bookingData.token_number} booked successfully`
       );
 
-      // Navigate to booking details page (similar to online booking)
+      // Navigate to booking details page
       navigate("/offlinebookingdetails", {
         state: {
           district: doctor.district_name || "",
@@ -108,24 +109,16 @@ function OfflineBooking({ doctor, session, date, onClose }) {
   return (
     <div className="container my-5">
       <div className="card shadow-sm p-4 mx-auto" style={{ maxWidth: "500px" }}>
-        <h2 className="card-title text-center mb-4">Walk-in Token Booking</h2>
+        <h2 className="card-title text-center mb-4">
+          Walk-in Token Booking
+        </h2>
 
         {/* Doctor Info */}
-        <div className="mb-3">
-          <strong>Doctor:</strong> {doctor.name}
-        </div>
-        <div className="mb-3">
-          <strong>Department:</strong> {doctor.department_name}
-        </div>
-        <div className="mb-3">
-          <strong>Hospital:</strong> {doctor.hospital_name}
-        </div>
-        <div className="mb-3">
-          <strong>Date:</strong> {date}
-        </div>
-        <div className="mb-3">
-          <strong>Session:</strong> {session}
-        </div>
+        <div className="mb-2"><strong>Doctor:</strong> {doctor.name}</div>
+        <div className="mb-2"><strong>Department:</strong> {doctor.department_name}</div>
+        <div className="mb-2"><strong>Hospital:</strong> {doctor.hospital_name}</div>
+        <div className="mb-2"><strong>Date:</strong> {date}</div>
+        <div className="mb-3"><strong>Session:</strong> {session}</div>
 
         {/* Patient Name */}
         <div className="mb-3">
@@ -142,6 +135,7 @@ function OfflineBooking({ doctor, session, date, onClose }) {
         {/* Token Selection */}
         <div className="mb-3">
           <label className="form-label">Select Walk-in Token</label>
+
           {loadingTokens ? (
             <div>Loading tokens...</div>
           ) : availableTokens.length > 0 ? (
@@ -152,23 +146,30 @@ function OfflineBooking({ doctor, session, date, onClose }) {
             >
               {availableTokens.map((token) => (
                 <option key={token} value={token}>
-                  {token}
+                  Token #{token}
                 </option>
               ))}
             </select>
           ) : (
-            <div>No walk-in tokens available</div>
+            <div className="text-danger">
+              No walk-in tokens available
+            </div>
           )}
         </div>
 
-        {/* Already Booked Tokens */}
-        <div className="mb-3">
-          <label className="form-label">Booked Online Tokens</label>
-          <div>{bookedOnlineTokens.length ? bookedOnlineTokens.join(", ") : "None"}</div>
+        {/* Booked Tokens Info */}
+        <div className="mb-2">
+          <strong>Booked Online:</strong>{" "}
+          {bookedOnlineTokens.length
+            ? bookedOnlineTokens.join(", ")
+            : "None"}
         </div>
+
         <div className="mb-3">
-          <label className="form-label">Booked Walk-in Tokens</label>
-          <div>{bookedWalkinTokens.length ? bookedWalkinTokens.join(", ") : "None"}</div>
+          <strong>Booked Walk-in:</strong>{" "}
+          {bookedWalkinTokens.length
+            ? bookedWalkinTokens.join(", ")
+            : "None"}
         </div>
 
         {/* Buttons */}
@@ -180,7 +181,11 @@ function OfflineBooking({ doctor, session, date, onClose }) {
           >
             {loading ? "Booking..." : "Book Walk-in Token"}
           </button>
-          <button className="btn btn-secondary flex-grow-1" onClick={onClose}>
+
+          <button
+            className="btn btn-secondary flex-grow-1"
+            onClick={onClose}
+          >
             Close
           </button>
         </div>

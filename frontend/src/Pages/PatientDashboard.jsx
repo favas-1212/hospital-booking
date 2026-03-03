@@ -21,14 +21,20 @@ function PatientDashboard() {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
 
+  const API_BASE = "http://127.0.0.1:8000/api/booking";
+
+  // ==========================
   // 🔒 Redirect if not logged in
+  // ==========================
   useEffect(() => {
     if (!token) {
       navigate("/login");
     }
   }, [token, navigate]);
 
-  // 📡 Fetch Patient Token Status
+  // ==========================
+  // 📡 Fetch Queue Status
+  // ==========================
   useEffect(() => {
     if (token) {
       fetchQueueStatus();
@@ -37,63 +43,97 @@ function PatientDashboard() {
     }
   }, [token]);
 
+  const authHeader = {
+    headers: {
+      Authorization: `Token ${token}`, // ✅ FIXED HERE
+    },
+  };
+
   const fetchQueueStatus = async () => {
     try {
       const res = await axios.get(
-        "http://127.0.0.1:8000/api/booking/patient/token-status/",
-        {
-          headers: {
-            Authorization: `Token ${token}`,
-          },
-        }
+        `${API_BASE}/patient/token-status/`,
+        authHeader
       );
-
       setData(res.data);
-      setLoading(false);
     } catch (err) {
-      console.log(err.response?.data);
-
-      if (err.response?.status === 404) {
+      if (err.response?.status === 401) {
+        localStorage.removeItem("token");
+        navigate("/login");
+      } else if (err.response?.status === 404) {
         setData(null);
+      } else {
+        console.error(err);
       }
-
+    } finally {
       setLoading(false);
     }
   };
 
-  // 🔁 Redirect if completed or cancelled
+  // ==========================
+  // 🔁 Auto redirect if done
+  // ==========================
   useEffect(() => {
-    if (data) {
-      if (data.status === "completed") {
-        alert("Consultation Completed ✅");
-        navigate("/");
-      }
-
-      if (data.status === "cancelled") {
-        alert("Token Cancelled ❌");
-        navigate("/");
-      }
+    if (data?.status === "done") {
+      alert("Consultation Completed ✅");
+      navigate("/");
     }
   }, [data, navigate]);
 
-  // ❌ Cancel Token
-  const cancelToken = async () => {
+  // ==========================
+  // ✅ Approve Booking
+  // ==========================
+  const approveToken = async () => {
     try {
       await axios.post(
-        "http://127.0.0.1:8000/api/booking/cancel-booking/",
+        `${API_BASE}/${data.booking_id}/patient-approve/`,
         {},
-        {
-          headers: { Authorization: `Token ${token}` },
-        }
+        authHeader
       );
-
-      alert("Token Cancelled");
-      navigate("/");
+      alert("Token Approved ✅");
+      fetchQueueStatus();
     } catch (err) {
-      console.log(err.response?.data);
+      alert(err.response?.data?.error || "Approval failed");
     }
   };
 
+  // ==========================
+  // ❌ Reject Booking
+  // ==========================
+  const rejectToken = async () => {
+    try {
+      await axios.post(
+        `${API_BASE}/${data.booking_id}/patient-reject/`,
+        {},
+        authHeader
+      );
+      alert("Booking Rejected ❌");
+      navigate("/");
+    } catch (err) {
+      alert(err.response?.data?.error || "Rejection failed");
+    }
+  };
+
+  // ==========================
+  // ❌ Cancel After Approval
+  // ==========================
+  const cancelToken = async () => {
+    try {
+      await axios.post(
+        `${API_BASE}/cancel-booking/`,
+        {},
+        authHeader
+      );
+      alert("Token Cancelled ❌");
+      navigate("/");
+    } catch (err) {
+      alert(err.response?.data?.error || "Cancellation failed");
+    }
+  };
+
+  // ==========================
+  // 🔄 Loading State
+  // ==========================
   if (loading) {
     return (
       <div className="text-center mt-5">
@@ -102,10 +142,21 @@ function PatientDashboard() {
     );
   }
 
+  // ==========================
+  // 🚫 No Active Booking
+  // ==========================
   if (!data) {
-    return <h4 className="text-center mt-5">No Active Booking</h4>;
+    return (
+      <>
+        <AppNavbar />
+        <h4 className="text-center mt-5">No Active Booking</h4>
+      </>
+    );
   }
 
+  // ==========================
+  // 📊 Queue Calculations
+  // ==========================
   const tokensAhead =
     data.tokens_ahead !== undefined
       ? data.tokens_ahead
@@ -137,7 +188,9 @@ function PatientDashboard() {
                   bg={
                     data.status === "consulting"
                       ? "success"
-                      : data.status === "waiting"
+                      : data.status === "approved"
+                      ? "primary"
+                      : data.status === "pending"
                       ? "warning"
                       : "secondary"
                   }
@@ -198,66 +251,54 @@ function PatientDashboard() {
                 </Card.Body>
               </Card>
 
-              <Card
-                className="border-0 rounded-4 shadow-sm"
-                style={{ backgroundColor: "#F0FDFA" }}
-              >
+              <Card className="border-0 rounded-4 shadow-sm">
                 <Card.Body>
-                  <div className="d-flex align-items-center mb-2">
-                    <InfoCircle
-                      style={{ color: "#0E7490" }}
-                      className="me-2"
-                    />
-                    <h6 className="fw-bold mb-0">
-                      Manage Token
-                    </h6>
-                  </div>
-
                   <div className="d-flex gap-3">
-                    <Button
-                      variant="outline-danger"
-                      className="w-100 rounded-3"
-                      onClick={cancelToken}
-                    >
-                      Cancel Token
-                    </Button>
+                    {data.status === "pending" && (
+                      <>
+                        <Button
+                          variant="success"
+                          className="w-100"
+                          onClick={approveToken}
+                        >
+                          Approve Token
+                        </Button>
+
+                        <Button
+                          variant="outline-danger"
+                          className="w-100"
+                          onClick={rejectToken}
+                        >
+                          Reject Token
+                        </Button>
+                      </>
+                    )}
+
+                    {data.status === "approved" && (
+                      <Button
+                        variant="outline-danger"
+                        className="w-100"
+                        onClick={cancelToken}
+                      >
+                        Cancel Token
+                      </Button>
+                    )}
+
+                    {data.status === "consulting" && (
+                      <div className="text-success fw-bold text-center w-100">
+                        You are being consulted 👨‍⚕️
+                      </div>
+                    )}
                   </div>
                 </Card.Body>
               </Card>
             </Col>
 
             <Col lg={4}>
-              <Card className="border-0 shadow-sm rounded-4 mb-4">
-                <Card.Body>
-                  <h6 className="fw-bold mb-3" style={{ color: "#0E7490" }}>
-                    Live Queue Tracker
-                  </h6>
-
-                  <ProgressBar now={progress} />
-
-                  <div className="d-flex justify-content-between text-muted small mt-2">
-                    <span>Current: #{data.current_token}</span>
-                    <span>Target: #{data.my_token}</span>
-                  </div>
-                </Card.Body>
-              </Card>
-
               <Card className="border-0 shadow-sm rounded-4">
                 <Card.Body>
-                  <h6 className="fw-bold mb-3" style={{ color: "#0E7490" }}>
-                    Notifications
-                  </h6>
-
-                  <div className="p-3 rounded-3 bg-light">
-                    <CheckCircle
-                      className="me-2"
-                      style={{ color: "#14B8A6" }}
-                    />
-                    <strong>Token Active</strong>
-                    <p className="mb-0 text-muted small">
-                      Your token #{data.my_token} is active.
-                    </p>
-                  </div>
+                  <h6 className="fw-bold mb-3">Live Queue Tracker</h6>
+                  <ProgressBar now={progress} />
                 </Card.Body>
               </Card>
             </Col>

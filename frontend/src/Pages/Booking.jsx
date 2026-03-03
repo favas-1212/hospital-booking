@@ -35,6 +35,7 @@ function Booking() {
       setHospital("");
       setDepartment("");
       setDoctor("");
+
       commonApi(`/booking/hospitals/?district_id=${district}`, "GET")
         .then(res => setHospitals(res.data))
         .catch(() => toast.error("Failed to load hospitals"));
@@ -48,6 +49,7 @@ function Booking() {
     if (hospital) {
       setDepartment("");
       setDoctor("");
+
       commonApi(`/booking/departments/?hospital_id=${hospital}`, "GET")
         .then(res => setDepartments(res.data))
         .catch(() => toast.error("Failed to load departments"));
@@ -60,7 +62,15 @@ function Booking() {
   useEffect(() => {
     if (department) {
       setDoctor("");
-      commonApi(`/booking/doctors/?department_id=${department}`, "GET")
+
+      const token = sessionStorage.getItem("token");
+
+      commonApi(
+        `/booking/doctors/?department_id=${department}`,
+        "GET",
+        null,
+        { Authorization: `Token ${token}` }
+      )
         .then(res => setDoctors(res.data))
         .catch(() => toast.error("Failed to load doctors"));
     }
@@ -82,8 +92,6 @@ function Booking() {
         booking_date: bookingDate,
       });
 
-      console.log("BOOKING RESPONSE:", res.data);
-
       const selectedDistrict = districts.find(d => d.id == district);
       const selectedHospital = hospitals.find(h => h.id == hospital);
       const selectedDepartment = departments.find(dep => dep.id == department);
@@ -103,8 +111,6 @@ function Booking() {
       });
 
     } catch (err) {
-      console.log("ERROR RESPONSE:", err.response?.data);
-
       toast.error(
         err.response?.data?.detail ||
         err.response?.data?.non_field_errors?.[0] ||
@@ -115,17 +121,45 @@ function Booking() {
   };
 
   return (
-    <div className="container my-5">
-      <div className="card shadow-sm p-4 mx-auto" style={{ maxWidth: "500px" }}>
-        <h2 className="card-title text-center mb-4">Book Your Token</h2>
+    <div
+      style={{
+        background: "linear-gradient(135deg, #E6FFFA, #F0FDFA)",
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "20px",
+      }}
+    >
+      <div
+        className="shadow"
+        style={{
+          width: "100%",
+          maxWidth: "520px",
+          background: "#ffffff",
+          borderRadius: "18px",
+          padding: "30px",
+        }}
+      >
+        <h2
+          className="text-center mb-2 fw-bold"
+          style={{ color: "#0E7490" }}
+        >
+          Book Your Token
+        </h2>
+
+        <p className="text-center text-muted mb-4">
+          Schedule your consultation easily
+        </p>
 
         {/* District */}
         <div className="mb-3">
-          <label className="form-label">District</label>
+          <label className="form-label fw-semibold">District</label>
           <select
             className="form-select"
             value={district}
             onChange={(e) => setDistrict(e.target.value)}
+            style={{ borderRadius: "10px" }}
           >
             <option value="">Select District</option>
             {districts.map(d => (
@@ -138,12 +172,13 @@ function Booking() {
 
         {/* Hospital */}
         <div className="mb-3">
-          <label className="form-label">Hospital</label>
+          <label className="form-label fw-semibold">Hospital</label>
           <select
             className="form-select"
             value={hospital}
             onChange={(e) => setHospital(e.target.value)}
             disabled={!district}
+            style={{ borderRadius: "10px" }}
           >
             <option value="">Select Hospital</option>
             {hospitals.map(h => (
@@ -156,12 +191,13 @@ function Booking() {
 
         {/* Department */}
         <div className="mb-3">
-          <label className="form-label">Department</label>
+          <label className="form-label fw-semibold">Department</label>
           <select
             className="form-select"
             value={department}
             onChange={(e) => setDepartment(e.target.value)}
             disabled={!hospital}
+            style={{ borderRadius: "10px" }}
           >
             <option value="">Select Department</option>
             {departments.map(dep => (
@@ -174,12 +210,13 @@ function Booking() {
 
         {/* Doctor */}
         <div className="mb-3">
-          <label className="form-label">Doctor</label>
+          <label className="form-label fw-semibold">Doctor</label>
           <select
             className="form-select"
             value={doctor}
             onChange={(e) => setDoctor(e.target.value)}
             disabled={!department}
+            style={{ borderRadius: "10px" }}
           >
             <option value="">Select Doctor</option>
             {doctors.map(doc => (
@@ -191,48 +228,106 @@ function Booking() {
         </div>
 
         {/* Booking Date */}
-        <div className="mb-3">
-          <label className="form-label">Booking Date</label>
+        <div className="mb-4">
+          <label className="form-label fw-semibold">Booking Date</label>
           <input
             type="date"
             className="form-control"
             value={bookingDate}
             onChange={(e) => setBookingDate(e.target.value)}
+            style={{ borderRadius: "10px" }}
           />
         </div>
 
-        {/* Session */}
+        {/* Session Selection */}
         <div className="mb-4">
-          <label className="form-label d-block">Session</label>
+          <label className="form-label fw-semibold d-block mb-3">
+            Select Session
+          </label>
 
-          <div className="form-check form-check-inline">
-            <input
-              type="radio"
-              className="form-check-input"
-              name="session"
-              value="morning"
-              checked={session === "morning"}
-              onChange={(e) => setSession(e.target.value)}
-            />
-            <label className="form-check-label">Morning</label>
-          </div>
+          <div className="d-flex gap-3">
 
-          <div className="form-check form-check-inline">
-            <input
-              type="radio"
-              className="form-check-input"
-              name="session"
-              value="evening"
-              checked={session === "evening"}
-              onChange={(e) => setSession(e.target.value)}
-            />
-            <label className="form-check-label">Evening</label>
+            {/* Morning */}
+            <div
+              onClick={() => setSession("morning")}
+              style={{
+                flex: 1,
+                padding: "14px",
+                textAlign: "center",
+                borderRadius: "12px",
+                cursor: "pointer",
+                border:
+                  session === "morning"
+                    ? "2px solid #FACC15"
+                    : "1px solid #E5E7EB",
+                background:
+                  session === "morning"
+                    ? "linear-gradient(135deg, #FEF9C3, #FDE68A)"
+                    : "#ffffff",
+                transition: "0.3s",
+              }}
+            >
+              <div
+                style={{
+                  fontWeight: "600",
+                  color:
+                    session === "morning"
+                      ? "#92400E"
+                      : "#374151",
+                }}
+              >
+                 Morning
+              </div>
+            </div>
+
+            {/* Evening */}
+            <div
+              onClick={() => setSession("evening")}
+              style={{
+                flex: 1,
+                padding: "14px",
+                textAlign: "center",
+                borderRadius: "12px",
+                cursor: "pointer",
+                border:
+                  session === "evening"
+                    ? "2px solid #0EA5E9"
+                    : "1px solid #E5E7EB",
+                background:
+                  session === "evening"
+                    ? "linear-gradient(135deg, #DBEAFE, #BFDBFE)"
+                    : "#ffffff",
+                transition: "0.3s",
+              }}
+            >
+              <div
+                style={{
+                  fontWeight: "600",
+                  color:
+                    session === "evening"
+                      ? "#1E3A8A"
+                      : "#374151",
+                }}
+              >
+                 Evening
+              </div>
+            </div>
+
           </div>
         </div>
 
         <button
-          className="btn btn-primary w-100"
+          className="w-100"
           onClick={handleBooking}
+          style={{
+            background: "linear-gradient(90deg, #0E7490, #14B8A6)",
+            border: "none",
+            color: "white",
+            padding: "12px",
+            borderRadius: "12px",
+            fontWeight: "600",
+            fontSize: "16px",
+          }}
         >
           Book Token
         </button>

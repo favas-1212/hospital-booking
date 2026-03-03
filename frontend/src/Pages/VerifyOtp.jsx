@@ -16,7 +16,7 @@ function VerifyOtp({ email, setStep, user }) {
       await verifyOtp({ email, otp });
       toast.success("OTP verified successfully! Please login.");
       setStep(3); // Move to login
-      navigate("/patientlogin");
+      navigate("/login");
     } catch (err) {
       toast.error(err.response?.data?.error || "Invalid OTP");
     }

@@ -90,7 +90,7 @@ function BookingDetails() {
             );
 
             alert("Payment Successful 🎉");
-            navigate("/booking");
+            navigate("/");
           } catch (err) {
             console.error(err);
             alert("Payment verification failed");

@@ -75,13 +75,17 @@ class Booking(models.Model):
 
     status = models.CharField(
         max_length=20,
-        choices=(
-            ("waiting", "Waiting"),
-            ("consulting", "Consulting"),
-            ("done", "Done"),
-        ),
-        default="waiting"
+        choices=[
+        ("pending", "Pending"),
+        ("approved", "Approved"),
+        ("consulting", "Consulting"),
+        ("done", "Done"),
+        ],
+        default="pending"
     )
+    
+    is_confirmed = models.BooleanField(default=False)
+    confirmation_time = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -324,7 +324,6 @@ def start_opd(request):
 @permission_classes([IsAuthenticated])
 @transaction.atomic
 def doctor_next_token(request):
-    from django.utils.timezone import now
 
     date_str = request.GET.get("date")
     booking_date = parse_date(date_str)
@@ -336,7 +335,6 @@ def doctor_next_token(request):
     if not doctor:
         return Response({"error": "Not a doctor account"}, status=403)
 
-    # Get all tokens for the day
     bookings = Booking.objects.select_for_update().filter(
         doctor=doctor,
         booking_date=booking_date
@@ -345,18 +343,20 @@ def doctor_next_token(request):
     if not bookings.exists():
         return Response({"message": "No tokens booked"})
 
-    # Mark current consulting token as done
+    # Finish current consulting
     current = bookings.filter(status="consulting").first()
     if current:
         current.status = "done"
         current.save()
 
-    # Find next waiting token
-    next_booking = bookings.filter(status="waiting").first()
-    if not next_booking:
-        return Response({"message": "All tokens completed"})
+    # 🔥 Only call APPROVED patients
+    next_booking = bookings.filter(
+        status="approved"
+    ).first()
 
-    # Mark as consulting
+    if not next_booking:
+        return Response({"message": "No approved tokens remaining"})
+
     next_booking.status = "consulting"
     next_booking.consulting_started_at = now()
     next_booking.save()
@@ -366,20 +366,25 @@ def doctor_next_token(request):
         "token": next_booking.token_number
     })
 
-
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from accounts.models import Doctor
 from .serializers import DoctorListSerializer
 
+from rest_framework.permissions import AllowAny
+
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def doctors_by_department(request):
     department_id = request.GET.get("department_id")
 
     if not department_id:
         return Response({"detail": "department_id required"}, status=400)
 
-    doctors = Doctor.objects.filter(department_id=department_id)
+    doctors = Doctor.objects.filter(
+        department_id=department_id,
+        is_approved=True
+    )
 
     serializer = DoctorListSerializer(doctors, many=True)
     return Response(serializer.data)
@@ -561,20 +566,48 @@ from booking.serializers import BookingSerializer
 # =====================================================
 # ONLINE TOKEN BOOKING
 # =====================================================
+from datetime import time
+from django.utils.timezone import localtime
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 @transaction.atomic
 def book_token(request):
     """
-    Book an online token (tokens 16–35)
+    Book an online token (16–35)
+    Disable:
+    - Morning after 9:00 AM
+    - Evening after 2:00 PM
     """
+
+    session = request.data.get("session")
+    today = localtime().time()
+
+    MORNING_START = time(9, 0)
+    EVENING_START = time(14, 0)
+
+    if session == "morning" and today >= MORNING_START:
+        return Response(
+            {"error": "Morning session booking closed after 9:00 AM"},
+            status=400
+        )
+
+    if session == "evening" and today >= EVENING_START:
+        return Response(
+            {"error": "Evening session booking closed after 2:00 PM"},
+            status=400
+        )
+
     serializer = BookingSerializer(
         data=request.data,
         context={"request": request}
     )
 
     if serializer.is_valid():
-        booking = serializer.save()
+        booking = serializer.save(
+            is_confirmed=False,
+            status="waiting"
+        )
         return Response(
             BookingSerializer(booking).data,
             status=status.HTTP_201_CREATED
@@ -646,7 +679,8 @@ def book_walkin_token(request):
         walkin_name=walkin_name,
         payment_status="offline",  # now valid
         patient=None,
-        status="consulting"             # must be None for walk-in
+        status="approved",
+        is_confirmed=True           # must be None for walk-in
 )
 
     return Response({
@@ -773,7 +807,7 @@ def start_opd_with_notifications(request):
                 message=(
                     f"Dear {patient.user.username},\n\n"
                     f"Your appointment token #{booking.token_number} is now active. "
-                    "Please wait for admin approval before consulting.\n\n"
+                    "Consulting has officially started. Please check your token status."
                     "Thank you."
                 ),
                 from_email="no-reply@medqueue.com",
@@ -868,7 +902,7 @@ def patient_token_status(request):
 
     current_token = current.token_number if current else 0
 
-    # 🔹 Count tokens ahead in database
+    # 🔹 Count tokens ahead
     tokens_ahead_count = Booking.objects.filter(
         doctor=booking.doctor,
         booking_date=today,
@@ -876,15 +910,76 @@ def patient_token_status(request):
         status__in=["waiting", "consulting"]
     ).count()
 
-    # 🔹 Average consultation time (you can make this dynamic later)
-    AVERAGE_TIME_PER_PATIENT = 7  # minutes
-
+    AVERAGE_TIME_PER_PATIENT = 7
     estimated_wait = tokens_ahead_count * AVERAGE_TIME_PER_PATIENT
 
     return Response({
+        "booking_id": booking.id,  # 🔥🔥 THIS WAS MISSING
         "my_token": booking.token_number,
         "current_token": current_token,
         "tokens_ahead": tokens_ahead_count,
         "estimated_wait_minutes": estimated_wait,
         "status": booking.status
     })
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def patient_approve_booking(request, booking_id):
+
+    try:
+        patient = Patient.objects.get(user=request.user)
+        booking = Booking.objects.get(id=booking_id, patient=patient)
+    except (Patient.DoesNotExist, Booking.DoesNotExist):
+        return Response({"error": "Invalid booking"}, status=404)
+
+    if booking.status != "pending":
+        return Response({"error": "Booking already processed"}, status=400)
+
+    booking.status = "approved"
+    booking.save()
+
+    return Response({
+        "message": "Token approved successfully",
+        "token_number": booking.token_number
+    })
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def patient_reject_booking(request, booking_id):
+
+    try:
+        patient = Patient.objects.get(user=request.user)
+        booking = Booking.objects.get(id=booking_id, patient=patient)
+    except (Patient.DoesNotExist, Booking.DoesNotExist):
+        return Response({"error": "Invalid booking"}, status=404)
+
+    if booking.status != "pending":
+        return Response({"error": "Cannot reject processed booking"}, status=400)
+
+    booking.delete()
+
+    return Response({
+        "message": "Booking rejected and deleted successfully"
+    })
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def cancel_booking(request):
+
+    try:
+        patient = Patient.objects.get(user=request.user)
+
+        booking = Booking.objects.get(
+            patient=patient,
+            status__in=["approved", "pending"]
+        )
+
+    except (Patient.DoesNotExist, Booking.DoesNotExist):
+        return Response({"error": "No active booking found"}, status=404)
+
+    booking.delete()
+
+    return Response({"message": "Booking cancelled successfully"})

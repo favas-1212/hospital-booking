@@ -221,26 +221,42 @@ class DoctorView(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"])
     def approve(self, request, pk=None):
 
-        # Only OPD staff can approve
         if not hasattr(request.user, "opdstaff"):
             return Response(
-                {"error": "Only OPD staff can approve doctors"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            {"error": "Only OPD staff can approve"},
+            status=403
+        )
 
         opd_staff = request.user.opdstaff
         doctor = self.get_object()
 
-        # ✅ VERY IMPORTANT: hospital check
         if doctor.hospital != opd_staff.hospital:
             return Response(
-                {"error": "You can only approve doctors from your hospital"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            {"error": "Not your hospital doctor"},
+            status=403
+        )
 
         doctor.is_approved = True
         doctor.save()
 
-        return Response({
-            "message": "Doctor approved successfully"
-        })
+        return Response({"message": "Doctor approved successfully"})
+
+    @action(detail=False, methods=["get"])
+    def pending(self, request):
+
+        if not hasattr(request.user, "opdstaff"):
+         return Response(
+            {"error": "Only OPD staff allowed"},
+            status=403
+        )
+
+        opd_staff = request.user.opdstaff
+
+        pending_doctors = Doctor.objects.filter(
+        hospital=opd_staff.hospital,
+        is_approved=False
+        )
+
+        serializer = self.get_serializer(pending_doctors, many=True)
+
+        return Response(serializer.data)

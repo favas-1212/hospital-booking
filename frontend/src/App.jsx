@@ -22,6 +22,7 @@ import OpDashboard from './Pages/OpDashboard';
 import OfflineBooking from './Pages/OfflineBooking';
 import OfflineBookingDetails from './Pages/OfflineBookingDetails'; // Add this
 import PatientDashboard from './Pages/PatientDashboard';
+import MyBooking from './Pages/MyBooking';
 
 function App() {
   const [count, setCount] = useState(0);
@@ -47,6 +48,7 @@ function App() {
         <Route path='/opd-offline' element={<OfflineBooking />} /> {/* Offline booking page */}
         <Route path='/offlinebookingdetails' element={<OfflineBookingDetails />} /> {/* Offline booking details page */}
         <Route path='/patient-dashboard' element={<PatientDashboard />} />
+        <Route path='/mybooking'element={<MyBooking/>}/>
       </Routes>
 
       <ToastContainer

@@ -3,9 +3,11 @@ import { Container, Form, Button, Card, Spinner } from "react-bootstrap";
 import { registerDoctor } from "../services/allApi";
 import { toast } from "react-toastify";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 
 function DoctorRegister() {
-
+ 
+  const navigate=useNavigate()
   const BASE_URL = "http://127.0.0.1:8000/api/booking";
 
   const [user, setUser] = useState({
@@ -25,6 +27,7 @@ function DoctorRegister() {
   const [selectedDistrict, setSelectedDistrict] = useState("");
   const [phoneError, setPhoneError] = useState("");
   const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState(""); // New password error
   const [loading, setLoading] = useState(false);
 
   // ================= LOAD DISTRICTS =================
@@ -87,6 +90,20 @@ function DoctorRegister() {
       return;
     }
 
+    // PASSWORD VALIDATION
+    if (name === "password") {
+      setUser({ ...user, password: value });
+
+      const passwordRegex = /^(?=.*[A-Za-z])(?=.*[^A-Za-z0-9]).{8,}$/;
+      setPasswordError(
+        passwordRegex.test(value)
+          ? ""
+          : "Password must be at least 8 characters, include 1 letter and 1 special character"
+      );
+
+      return;
+    }
+
     // Convert FK values to number
     setUser({
       ...user,
@@ -100,7 +117,7 @@ function DoctorRegister() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (phoneError || emailError) {
+    if (phoneError || emailError || passwordError) {
       toast.error("Fix validation errors first");
       return;
     }
@@ -116,6 +133,7 @@ function DoctorRegister() {
       await registerDoctor(user);
 
       toast.success("Doctor registered! Waiting for OPD approval");
+      navigate('/login')
 
       setUser({
         username: "",
@@ -130,6 +148,7 @@ function DoctorRegister() {
       setSelectedDistrict("");
       setHospitals([]);
       setDepartments([]);
+      setPasswordError(""); // reset password error
 
     } catch (err) {
       toast.error(
@@ -146,9 +165,9 @@ function DoctorRegister() {
     <Container className="d-flex justify-content-center my-5">
       <Card style={{ maxWidth: "500px", width: "100%" }} className="p-4 shadow">
 
-        <h3 className="text-center text-primary mb-4">
-          👨‍⚕️ Doctor Registration
-        </h3>
+       <h3 className="text-center mb-4" style={{ color: "#0E7490" }}>
+  Doctor Registration
+</h3>
 
         <Form onSubmit={handleSubmit}>
 
@@ -186,8 +205,12 @@ function DoctorRegister() {
               name="password"
               value={user.password}
               onChange={handleChange}
+              isInvalid={!!passwordError}
               required
             />
+            <Form.Control.Feedback type="invalid">
+              {passwordError}
+            </Form.Control.Feedback>
           </Form.Group>
 
           {/* FULL NAME */}
@@ -277,10 +300,14 @@ function DoctorRegister() {
             </Form.Control.Feedback>
           </Form.Group>
 
-          <Button type="submit" className="w-100" disabled={loading}>
-            {loading ? <Spinner size="sm" animation="border" /> : "Register"}
-          </Button>
-
+         <Button
+  type="submit"
+  className="w-100"
+  disabled={loading}
+  style={{ background: "linear-gradient(90deg, #0E7490, #14B8A6)", border: "none" }}
+>
+  {loading ? <Spinner size="sm" animation="border" /> : "Register"}
+</Button>
         </Form>
       </Card>
     </Container>

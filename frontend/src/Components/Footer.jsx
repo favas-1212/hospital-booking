@@ -4,15 +4,16 @@ const Footer = () => {
   return (
     <footer
       style={{
-        backgroundColor: "#007bff",
-        color: "#fff",
+        background: "linear-gradient(90deg, #0E7490, #14B8A6)",
+        color: "white",
         textAlign: "center",
-        padding: "10px 0",
+        padding: "18px 0",
         fontSize: "14px",
-        marginTop: "30px",
+        marginTop: "40px",
+        letterSpacing: "0.5px",
       }}
     >
-      &copy; {new Date().getFullYear()} MEDQUEUE. All rights reserved.
+      © {new Date().getFullYear()} MEDQUEUE. All rights reserved.
     </footer>
   );
 };

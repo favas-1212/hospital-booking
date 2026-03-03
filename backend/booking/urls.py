@@ -20,7 +20,10 @@ from .views import (
     fetch_tokens,
     approve_booking,
     reject_booking,
-    patient_token_status
+    patient_token_status,
+    patient_approve_booking,
+    patient_reject_booking,
+    
 )
 
 urlpatterns = [
@@ -39,7 +42,7 @@ urlpatterns = [
     # =============================
     path("book-token/", book_token),
     path("booking-history/", booking_history),
-    path("cancel-booking/<int:booking_id>/", cancel_booking),
+    
 
     # =============================
     # STAFF / ADMIN APIs
@@ -58,6 +61,8 @@ urlpatterns = [
     path("doctors/", doctors_by_department),
     path("book-walkin-token/", book_walkin_token),
     path("fetch-tokens/", fetch_tokens),
+    path("cancel-booking/", cancel_booking, name="cancel-booking"),
+
 
     # =============================
     # ONLINE TOKEN APPROVAL
@@ -65,4 +70,6 @@ urlpatterns = [
     path("booking/approve_booking/<int:booking_id>/", approve_booking),
     path("booking/reject_booking/<int:booking_id>/", reject_booking),
     path("patient/token-status/", patient_token_status),
+    path("<int:booking_id>/patient-approve/", patient_approve_booking),
+    path("<int:booking_id>/patient-reject/", patient_reject_booking),
 ]
