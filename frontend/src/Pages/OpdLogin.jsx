@@ -15,7 +15,7 @@ function OpdLogin() {
 
   // ---------------- redirect if already logged in ----------------
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (token) {
       navigate("/opd-dashboard"); // OPD dashboard landing
     }
@@ -41,10 +41,10 @@ function OpdLogin() {
       const { token, role, opd_id, hospital_id } = res.data;
 
       // Store token & info for authenticated requests
-      localStorage.setItem("token", token);
-      localStorage.setItem("role", role);
-      localStorage.setItem("opd_id", opd_id);
-      localStorage.setItem("hospital_id", hospital_id);
+      sessionStorage.setItem("token", token);
+      sessionStorage.setItem("role", role);
+      sessionStorage.setItem("opd_id", opd_id);
+      sessionStorage.setItem("hospital_id", hospital_id);
 
       toast.success("Login successful");
 

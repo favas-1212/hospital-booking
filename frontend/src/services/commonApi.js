@@ -4,7 +4,7 @@ const BASE_URL = "http://127.0.0.1:8000/api"; // your Django backend
 
 const commonApi = (url, method = "GET", data = null) => {
 
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
 
   return axios({
     url: `${BASE_URL}${url}`,

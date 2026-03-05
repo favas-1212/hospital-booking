@@ -28,18 +28,18 @@ function Login() {
       if (activeTab === "patient") {
         res = await loginPatient({ username, password });
 
-        localStorage.setItem("token", res.data.token);
-        localStorage.setItem("role", "patient");
-        localStorage.setItem("username", username);
+        sessionStorage.setItem("token", res.data.token);
+        sessionStorage.setItem("role", "patient");
+        sessionStorage.setItem("username", username);
 
         toast.success("Patient Login Successful");
         navigate("/");
       } else {
         res = await loginDoctor({ username, password });
 
-        localStorage.setItem("token", res.data.token); // unified key
-        localStorage.setItem("role", "doctor"); // store role
-        localStorage.setItem("username", username);
+        sessionStorage.setItem("token", res.data.token); // unified key
+        sessionStorage.setItem("role", "doctor"); // store role
+        sessionStorage.setItem("username", username);
 
         toast.success("Doctor Login Successful");
         navigate("/doctordashboard");

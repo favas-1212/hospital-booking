@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
+import { toast } from "react-toastify";
 
 function BookingDetails() {
   const location = useLocation();
@@ -38,7 +39,7 @@ function BookingDetails() {
   // ✅ PAYMENT FUNCTION
   const handlePayment = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token");
 
       if (!token) {
         alert("Login required");
@@ -89,7 +90,7 @@ function BookingDetails() {
               }
             );
 
-            alert("Payment Successful 🎉");
+            toast.success("Payment Successful ");
             navigate("/");
           } catch (err) {
             console.error(err);

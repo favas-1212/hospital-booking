@@ -5,12 +5,12 @@ import { Link, useNavigate } from "react-router-dom";
 function AppNavbar() {
   const navigate = useNavigate();
 
-  const token = localStorage.getItem("token");
-  const username = localStorage.getItem("username");
+  const token = sessionStorage.getItem("token");
+  const username =sessionStorage.getItem("username");
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("username");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("username");
     navigate("/");
     window.location.reload();
   };

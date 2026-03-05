@@ -10,7 +10,7 @@ const DoctorDashboard = () => {
   const [queue, setQueue] = useState([]);
   const [allTokens, setAllTokens] = useState([]);
 
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
   const today = new Date().toISOString().split("T")[0];
 
   // ==============================

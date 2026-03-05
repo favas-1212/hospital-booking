@@ -23,7 +23,7 @@ function DoctorLogin() {
         password: password,
       });
 
-      localStorage.setItem("token", res.data.token);
+      sessionStorage.setItem("token", res.data.token);
       alert("Doctor Login Successful");
       navigate("/doctordashboard");
     } catch (err) {

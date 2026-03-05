@@ -7,25 +7,23 @@ function PatientLogin() {
   const navigate = useNavigate();
   const [data, setData] = useState({ username: "", password: "" });
 
-const handleLogin = async (e) => {
-  e.preventDefault();
-  try {
-    const res = await loginPatient(data);
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await loginPatient(data);
 
-    // Save token and username
-    localStorage.setItem("token", res.data.token);
-    localStorage.setItem("username", data.username); // store username for landing page
+      // Save token and username in sessionStorage (per tab)
+      sessionStorage.setItem("token", res.data.token);
+      sessionStorage.setItem("username", data.username);
 
-    alert("Login successful");
+      alert("Login successful");
 
-    // Redirect to landing page
-    navigate("/"); 
-    window.location.reload(); // reload so landing page reflects login state
-  } catch (err) {
-    alert(err.response?.data?.error || "Login failed");
-  }
-};
-
+      // Redirect to landing page without full reload
+      navigate("/", { replace: true });
+    } catch (err) {
+      alert(err.response?.data?.error || "Login failed");
+    }
+  };
 
   return (
     <Container className="d-flex justify-content-center align-items-center my-5">

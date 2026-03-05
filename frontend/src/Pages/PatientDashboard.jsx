@@ -1,14 +1,5 @@
 import React, { useEffect, useState } from "react";
-import {
-  Container,
-  Row,
-  Col,
-  Card,
-  Button,
-  ProgressBar,
-  Badge,
-  Spinner,
-} from "react-bootstrap";
+import {Container,Row,Col,Card,Button,ProgressBar,Badge,Spinner,} from "react-bootstrap";
 import { Clock, CheckCircle, InfoCircle } from "react-bootstrap-icons";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
@@ -19,7 +10,7 @@ function PatientDashboard() {
   const [loading, setLoading] = useState(true);
 
   const navigate = useNavigate();
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
 
   const API_BASE = "http://127.0.0.1:8000/api/booking";
 
@@ -58,7 +49,7 @@ function PatientDashboard() {
       setData(res.data);
     } catch (err) {
       if (err.response?.status === 401) {
-        localStorage.removeItem("token");
+        sessionStorage.removeItem("token");
         navigate("/login");
       } else if (err.response?.status === 404) {
         setData(null);

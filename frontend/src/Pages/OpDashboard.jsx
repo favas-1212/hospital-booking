@@ -19,7 +19,7 @@ function OpDashboard() {
   const fetchDashboard = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token");
 
       const res = await axios.get(
         "http://127.0.0.1:8000/api/booking/opd/dashboard/",
@@ -46,7 +46,7 @@ function OpDashboard() {
   // ==============================
   const startOPD = async (doctor) => {
     try {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token");
 
       const res = await axios.post(
         "http://127.0.0.1:8000/api/booking/doctor/start-opd/",
@@ -72,7 +72,7 @@ function OpDashboard() {
   // ==============================
   const approveToken = async (bookingId) => {
     try {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token");
 
       await axios.post(
         `http://127.0.0.1:8000/api/booking/approve_booking/${bookingId}/`,
@@ -93,7 +93,7 @@ function OpDashboard() {
   // ==============================
   const rejectToken = async (bookingId) => {
     try {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token");
 
       await axios.post(
         `http://127.0.0.1:8000/api/booking/reject_booking/${bookingId}/`,

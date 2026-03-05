@@ -41,7 +41,7 @@ export const getAvailableTokens = (departmentId, session) =>
 
 // Book online token (paid)
 export const bookToken = (payload) => {
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
   if (!token) throw new Error("No auth token found. Please login first.");
   return axios.post(`${BASE_URL}/booking/book-token/`, payload, {
     headers: { Authorization: `Token ${token}` },
@@ -55,7 +55,7 @@ export const createPaymentOrder = (amount) =>
 
 // ===================== TOKENS BY DATE =====================
 export const getTokensByDate = (departmentId, session, bookingDate) => {
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
   return axios.get(
     `${BASE_URL}/booking/tokens/?department_id=${departmentId}&session=${session}&booking_date=${bookingDate}`,
     { headers: { Authorization: `Token ${token}` } }
@@ -71,7 +71,7 @@ export const getDoctorDashboard = (date) =>
 
 // ------------------ Walk-in Token ------------------
 export const fetchOPDDashboard = async (date) => {
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
   const res = await axios.get(`${BASE_URL}/booking/opd/dashboard/`, {
     headers: { Authorization: `Token ${token}` },
     params: { date },
@@ -100,7 +100,7 @@ export const fetchTokens = async (doctorId, session, date) => {
 export const bookWalkinToken = async (data) => {
   const res = await axios.post(`${API_BASE}/book-walkin-token/`, data, {
     headers: {
-      Authorization: `Bearer ${localStorage.getItem("access_token")}`, // if using JWT
+      Authorization: `Bearer ${sessionStorage.getItem("access_token")}`, // if using JWT
     },
   });
   return res.data;
