@@ -1,107 +1,110 @@
+/**
+ * allApi.js — MedQueue frontend API calls
+ */
+
 import commonApi from "./commonApi";
-import axios from "axios";
 
-// Base URL for Django API
-const BASE_URL = "http://127.0.0.1:8000/api";
+// ═══════════════════════════════════════════════════════
+// AUTH — PATIENT
+// ═══════════════════════════════════════════════════════
+export const registerPatient   = (data) => commonApi("/patients/",            "POST", data);
+export const verifyOtp         = (data) => commonApi("/patients/verify_otp/", "POST", data);
+export const resendOtp         = (data) => commonApi("/patients/resend_otp/", "POST", data);
+export const loginPatient      = (data) => commonApi("/patients/login/",      "POST", data);
+export const getPatientProfile = ()     => commonApi("/patients/profile/",    "GET");
 
-// ===================== PATIENT =====================
+// ═══════════════════════════════════════════════════════
+// AUTH — DOCTOR
+// ═══════════════════════════════════════════════════════
+export const registerDoctor = (data) => commonApi("/doctors/",       "POST", data);
+export const loginDoctor    = (data) => commonApi("/doctors/login/", "POST", data);
 
-export const registerPatient = (data) => commonApi("/patients/", "POST", data);
-export const verifyOtp = (data) => commonApi("/patients/verify_otp/", "POST", data);
-export const resendOtp = (data) => commonApi("/patients/resend_otp/", "POST", data);
-export const loginPatient = (data) => commonApi("/patients/login/", "POST", data);
+// ═══════════════════════════════════════════════════════
+// AUTH — OPD STAFF
+// ═══════════════════════════════════════════════════════
+export const registerOPDStaff = (data) => commonApi("/opdstaff/",       "POST", data);
+export const loginOPDStaff    = (data) => commonApi("/opdstaff/login/", "POST", data);
 
-// ===================== DOCTOR =====================
-export const registerDoctor = (data) => commonApi("/doctors/", "POST", data);
-export const loginDoctor = (data) => commonApi("/doctors/login/", "POST", data);
+// ═══════════════════════════════════════════════════════
+// PUBLIC / LOOKUP
+// ═══════════════════════════════════════════════════════
+export const getDistricts   = ()           => commonApi("/booking/districts/",                              "GET");
+export const getHospitals   = (districtId) => commonApi(`/booking/hospitals/?district_id=${districtId}`,   "GET");
+export const getDepartments = (hospitalId) => commonApi(`/booking/departments/?hospital_id=${hospitalId}`, "GET");
+export const getOPDSessions = ()           => commonApi("/booking/opd-sessions/",                          "GET");
 
-// ===================== OPD STAFF =====================
-export const registerOPD = (data) => commonApi(`${BASE_URL}/opdstaff/`, "POST", data);
-export const loginOPD = (data) => commonApi(`${BASE_URL}/opdstaff/login/`, "POST", data);
+export const getApprovedDoctors     = (params = "") => commonApi(`/booking/doctors/all/${params}`,             "GET");
+export const getDoctorsByDepartment = (deptId)      => commonApi(`/booking/doctors/?department_id=${deptId}`,  "GET");
 
-// ===================== DRF TOKEN LOGIN =====================
-export const obtainToken = (data) => commonApi(`${BASE_URL}/token/`, "POST", data);
+export const fetchTokenAvailability = (doctorId, session, date) =>
+  commonApi(`/booking/tokens/availability/?doctor_id=${doctorId}&session=${session}&date=${date}`, "GET");
 
-// ===================== OPD DASHBOARD =====================
-export const getDoctors = (token) =>
-  commonApi(`${BASE_URL}/booking/doctors/`, "GET", null, { Authorization: `Token ${token}` });
+export const getQueueStatus = (doctorId, session, date) =>
+  commonApi(`/booking/queue/status/?doctor_id=${doctorId}&session=${session}&date=${date}`, "GET");
 
-export const approveDoctor = (id, token) =>
-  commonApi(`${BASE_URL}/booking/doctors/${id}/approve/`, "PATCH", null, { Authorization: `Token ${token}` });
+// ═══════════════════════════════════════════════════════
+// PATIENT — BOOKING
+// ═══════════════════════════════════════════════════════
+export const bookToken             = (payload)   => commonApi("/booking/patient/book/",                 "POST", payload);
+export const getBookingHistory     = ()          => commonApi("/booking/patient/history/",              "GET");
+export const cancelBooking         = (id)        => commonApi(`/booking/patient/cancel/${id}/`,         "DELETE");
+export const getPatientTokenStatus = ()          => commonApi("/booking/patient/token-status/",         "GET");
+export const confirmAttendance     = (id)        => commonApi(`/booking/patient/confirm/${id}/`,        "POST");
+export const rejectBooking         = (id)        => commonApi(`/booking/patient/reject/${id}/`,         "POST");
 
-// ======================== BOOKING =====================
-export const getDistricts = () => axios.get(`${BASE_URL}/booking/districts/`);
-export const getHospitals = (districtId) =>
-  axios.get(`${BASE_URL}/booking/hospitals/?district=${districtId}`);
-export const getDepartments = (hospitalId) =>
-  axios.get(`${BASE_URL}/booking/departments/?hospital=${hospitalId}`);
-export const getSessions = () => axios.get(`${BASE_URL}/booking/opd-sessions/`);
-export const getAvailableTokens = (departmentId, session) =>
-  axios.get(`${BASE_URL}/booking/available-tokens/?department=${departmentId}&session=${session}`);
+// ═══════════════════════════════════════════════════════
+// DOCTOR
+// ═══════════════════════════════════════════════════════
+export const getDoctorDashboard = (date, session = "") =>
+  commonApi(`/booking/doctor/dashboard/?date=${date}${session ? `&session=${session}` : ""}`, "GET");
 
-// Book online token (paid)
-export const bookToken = (payload) => {
-  const token = sessionStorage.getItem("token");
-  if (!token) throw new Error("No auth token found. Please login first.");
-  return axios.post(`${BASE_URL}/booking/book-token/`, payload, {
-    headers: { Authorization: `Token ${token}` },
-  });
+// Start OPD — doctor: { date, session } | staff: { date, doctor_id }
+export const startOPD = (data) =>
+  commonApi("/booking/doctor/start-opd/", "POST", data);
+
+// Next token — query params
+export const nextToken = (date, session = "") =>
+  commonApi(`/booking/doctor/next-token/?date=${date}${session ? `&session=${session}` : ""}`, "POST");
+
+export const skipToken = (id)   => commonApi(`/booking/doctor/skip/${id}/`, "POST");
+export const endOPD    = (data) => commonApi("/booking/doctor/end-opd/",    "POST", data);
+
+// ═══════════════════════════════════════════════════════
+// STAFF — OPD MANAGEMENT
+// ═══════════════════════════════════════════════════════
+export const bookWalkinToken    = (data)       => commonApi("/booking/staff/walkin/",                              "POST", data);
+export const getTokensByDate    = (dId, s, d)  => commonApi(`/booking/staff/tokens/?doctor_id=${dId}&session=${s}&booking_date=${d}`, "GET");
+export const getOPDDashboard    = (date = "")  => commonApi(`/booking/staff/opd-dashboard/${date ? `?date=${date}` : ""}`, "GET");
+export const getDoctorTokensByDate = (dId, d)  => commonApi(`/booking/staff/doctor-tokens/?doctor_id=${dId}&date=${d}`, "GET");
+export const approveBooking     = (id)         => commonApi(`/booking/staff/approve/${id}/`,                       "POST");
+export const rejectStaffBooking = (id)         => commonApi(`/booking/staff/reject/${id}/`,                        "POST");
+
+// ═══════════════════════════════════════════════════════
+// STAFF — MANUAL PATIENT ACTIONS
+// ═══════════════════════════════════════════════════════
+export const resendOPDNotification  = (id) => commonApi(`/booking/staff/resend-notification/${id}/`,  "POST");
+export const staffConfirmAttendance = (id) => commonApi(`/booking/staff/confirm-attendance/${id}/`,   "POST");
+
+// ═══════════════════════════════════════════════════════
+// STAFF — DOCTOR REGISTRATION APPROVALS
+// ═══════════════════════════════════════════════════════
+export const getPendingDoctors = ()    => commonApi("/booking/staff/pending-doctors/",            "GET");
+export const approveDoctor     = (id)  => commonApi(`/booking/staff/approve-doctor/${id}/`,       "POST");
+export const rejectDoctor      = (id)  => commonApi(`/booking/staff/reject-doctor/${id}/`,        "POST");
+
+// ═══════════════════════════════════════════════════════
+// STAFF — CONSULTATION HISTORY
+// ═══════════════════════════════════════════════════════
+export const getConsultationHistory = (date = "", doctorId = "") => {
+  const params = [
+    date     ? `date=${date}`           : "",
+    doctorId ? `doctor_id=${doctorId}`  : "",
+  ].filter(Boolean).join("&");
+  return commonApi(`/booking/staff/consultation-history/${params ? `?${params}` : ""}`, "GET");
 };
 
-
-// ===================== PAYMENT =====================
-export const createPaymentOrder = (amount) =>
-  axios.post(`${BASE_URL}/booking/create-payment-order/`, { amount });
-
-// ===================== TOKENS BY DATE =====================
-export const getTokensByDate = (departmentId, session, bookingDate) => {
-  const token = sessionStorage.getItem("token");
-  return axios.get(
-    `${BASE_URL}/booking/tokens/?department_id=${departmentId}&session=${session}&booking_date=${bookingDate}`,
-    { headers: { Authorization: `Token ${token}` } }
-  );
-};
-
-// Doctor dashboard
-export const getDoctorDashboard = (date) =>
-  commonApi(`/booking/doctor/dashboard/?date=${date}`);
-
-
-
-
-// ------------------ Walk-in Token ------------------
-export const fetchOPDDashboard = async (date) => {
-  const token = sessionStorage.getItem("token");
-  const res = await axios.get(`${BASE_URL}/booking/opd/dashboard/`, {
-    headers: { Authorization: `Token ${token}` },
-    params: { date },
-  });
-  return res.data;
-};
-
-// src/services/allApi.js
-
-
-const API_BASE = "http://127.0.0.1:8000/api/booking";
-
-// Fetch tokens (online + walk-in)
-export const fetchTokens = async (doctorId, session, date) => {
-  const res = await axios.get(`${API_BASE}/fetch-tokens/`, {
-    params: {
-      doctor_id: doctorId,
-      session: session,
-      date: date,
-    },
-  });
-  return res.data;
-};
-
-// Book a walk-in token
-export const bookWalkinToken = async (data) => {
-  const res = await axios.post(`${API_BASE}/book-walkin-token/`, data, {
-    headers: {
-      Authorization: `Bearer ${sessionStorage.getItem("access_token")}`, // if using JWT
-    },
-  });
-  return res.data;
-};
+// ═══════════════════════════════════════════════════════
+// PAYMENTS (Razorpay)
+// ═══════════════════════════════════════════════════════
+export const createPaymentOrder = (bookingId) => commonApi("/payments/create-order/", "POST", { booking_id: bookingId });
+export const verifyPayment      = (data)      => commonApi("/payments/verify/",       "POST", data);

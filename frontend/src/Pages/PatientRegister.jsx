@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Container, Card, Form, Button, InputGroup } from "react-bootstrap";
 import { toast } from "react-toastify";
 import { registerPatient } from "../services/allApi";
-import VerifyOtp from "./VerifyOtp";
+import VerifyOtp from "./Verify0tp";
 import { Link } from "react-router-dom";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 
