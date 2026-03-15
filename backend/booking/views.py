@@ -128,7 +128,7 @@ def fetch_tokens(request):
     cutoffs      = {"morning": time(8, 0), "evening": time(13, 0)}
     current_time = localtime().time()
     is_today     = booking_date == now().date()
-    booking_open = not (is_today and current_time >= cutoffs.get(session, time(23, 59)))
+    # booking_open = not (is_today and current_time >= cutoffs.get(session, time(23, 59)))
 
     return Response({
         "doctor": {
@@ -330,7 +330,8 @@ def doctor_dashboard(request):
             "id"                   : b.id,
             "token"                : b.token_number,
             "patient_name"         : b.display_name,
-            "type"                 : "online" if b.token_number in ONLINE_RANGE else "walkin",
+            # Walk-in patients have no linked account, show "Walk-in" as type
+            "patient_type"         : "walkin" if b.is_walkin else "online",
             "session"              : b.session,
             "status"               : b.status,
             "is_confirmed"         : b.is_confirmed,
@@ -339,6 +340,17 @@ def doctor_dashboard(request):
             "consulting_started_at": b.consulting_started_at,
         })
 
+    # Queue summary: confirmed waiting patients ordered by queue position
+    confirmed_waiting = qs.filter(
+        status=BookingStatus.WAITING,
+        is_confirmed=True,
+    ).order_by("queue_insert_time", "token_number")
+
+    unconfirmed_waiting = qs.filter(
+        status=BookingStatus.WAITING,
+        is_confirmed=False,
+    ).count()
+
     return Response({
         "opd_started"        : True,
         "date"               : booking_date,
@@ -346,7 +358,10 @@ def doctor_dashboard(request):
         "started_at"         : opd_day.started_at,
         "avg_consult_minutes": opd_day.avg_consult_minutes,
         "current_token"      : current.token_number if current else None,
+        "current_patient"    : current.display_name if current else None,
         "total_tokens"       : qs.count(),
+        "confirmed_in_queue" : confirmed_waiting.count(),
+        "unconfirmed_count"  : unconfirmed_waiting,
         "tokens"             : tokens,
     })
 
@@ -381,7 +396,7 @@ def doctor_next_token(request):
         all_qs = all_qs.filter(session=session)
 
     # ── Mark current as DONE ─────────────────────────────
-    current    = all_qs.filter(status=BookingStatus.CONSULTING).first()
+    current     = all_qs.filter(status=BookingStatus.CONSULTING).first()
     tokens_done = all_qs.filter(status=BookingStatus.DONE).count()
 
     if current:
@@ -391,38 +406,53 @@ def doctor_next_token(request):
         tokens_done += 1
         _update_avg_consult_time(doctor, booking_date)
 
-    # ── Waiting queryset ─────────────────────────────────
+    # ── FIX: Auto-confirm ALL walk-in patients ────────────
+    # Walk-in patients are physically present at the counter,
+    # so they should always be auto-confirmed into the queue.
+    all_qs.filter(
+        token_number__in=WALKIN_RANGE,
+        status=BookingStatus.WAITING,
+        is_confirmed=False,
+    ).update(
+        is_confirmed=True,
+        confirmation_time=now(),
+        queue_insert_time=now(),
+    )
+
+    # ── Refresh waiting queryset after auto-confirm ───────
     waiting = all_qs.filter(status=BookingStatus.WAITING)
 
-    # 1. MAIN QUEUE — walk-ins (by token#) + early online confirmers (by token#)
-    walkin_ids       = list(waiting.filter(
-        token_number__in=WALKIN_RANGE
-    ).values_list("id", flat=True))
-
-    early_online_ids = list(waiting.filter(
-        token_number__range=(ONLINE_TOKEN_START, ONLINE_TOKEN_END),
-        is_confirmed=True,
-        confirmation_time__lte=late_cutoff,
-    ).values_list("id", flat=True))
-
+    # ── MAIN QUEUE ────────────────────────────────────────
+    # Walk-ins (all confirmed above) + online patients who
+    # confirmed within 10 minutes of OPD start → ordered by token#
     main_queue = waiting.filter(
-        id__in=walkin_ids + early_online_ids
+        Q(token_number__in=WALKIN_RANGE) |
+        Q(
+            token_number__range=(ONLINE_TOKEN_START, ONLINE_TOKEN_END),
+            is_confirmed=True,
+            confirmation_time__lte=late_cutoff,
+        )
     ).order_by("token_number")
 
-    # 2. LATE QUEUE — online confirmed after 10 mins (by confirmation time)
+    # ── LATE QUEUE ────────────────────────────────────────
+    # Online patients who confirmed AFTER 10 minutes of OPD start.
+    # Inserted every 5th token to avoid blocking walk-ins.
     late_queue = waiting.filter(
         token_number__range=(ONLINE_TOKEN_START, ONLINE_TOKEN_END),
         is_confirmed=True,
         confirmation_time__gt=late_cutoff,
     ).order_by("confirmation_time")
 
-    # 3. UNCONFIRMED — online not yet confirmed (fallback only)
+    # ── UNCONFIRMED FALLBACK ──────────────────────────────
+    # Online patients who never confirmed — called only when
+    # both main and late queues are empty.
     unconfirmed_q = waiting.filter(
         token_number__range=(ONLINE_TOKEN_START, ONLINE_TOKEN_END),
         is_confirmed=False,
     ).order_by("token_number")
 
-    # ── Pick next ────────────────────────────────────────
+    # ── Pick next ─────────────────────────────────────────
+    # Every 5th token done → insert one late-confirmed patient
     insert_late_now = (
         late_queue.exists()
         and tokens_done > 0
@@ -452,12 +482,20 @@ def doctor_next_token(request):
     next_booking.consulting_started_at = now()
     next_booking.save()
 
+    # ── How many still waiting ────────────────────────────
+    still_waiting = all_qs.filter(
+        status=BookingStatus.WAITING, is_confirmed=True
+    ).count()
+
     return Response({
-        "message"   : f"Now consulting Token #{next_booking.token_number}",
-        "done_token": current.token_number if current else None,
-        "next_token": next_booking.token_number,
-        "patient"   : next_booking.display_name,
+        "message"      : f"Now consulting Token #{next_booking.token_number}",
+        "done_token"   : current.token_number if current else None,
+        "next_token"   : next_booking.token_number,
+        "patient"      : next_booking.display_name,
+        "patient_type" : "walkin" if next_booking.is_walkin else "online",
+        "still_waiting": still_waiting,
     })
+
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -476,7 +514,6 @@ def start_opd(request):
     if not booking_date:
         return Response({"error": "Invalid date."}, status=400)
 
-    # Staff passes doctor_id; doctor uses own account
     if doctor_id:
         try:
             doctor = Doctor.objects.get(id=doctor_id, is_approved=True)
@@ -495,6 +532,7 @@ def start_opd(request):
     opd_day.is_active  = True
     opd_day.save()
 
+    # ── Notify online patients and set them to WAITING ────
     online_bookings = Booking.objects.filter(
         doctor=doctor,
         booking_date=booking_date,
@@ -524,13 +562,26 @@ def start_opd(request):
         b.status = BookingStatus.WAITING
         b.save()
 
+    # ── Walk-in bookings → set to WAITING + auto-confirm ──
+    # Walk-in patients booked for today are assumed present at counter.
+    walkin_bookings = Booking.objects.filter(
+        doctor=doctor,
+        booking_date=booking_date,
+        token_number__in=WALKIN_RANGE,
+    )
+    walkin_bookings.update(
+        status=BookingStatus.WAITING,
+        is_confirmed=True,
+        confirmation_time=now(),
+        queue_insert_time=now(),
+    )
+
     return Response({
-        "message"        : f"OPD started. {notified} patient(s) notified.",
-        "started_at"     : opd_day.started_at,
-        "online_bookings": online_bookings.count(),
+        "message"         : f"OPD started. {notified} online patient(s) notified.",
+        "started_at"      : opd_day.started_at,
+        "online_bookings" : online_bookings.count(),
+        "walkin_bookings" : walkin_bookings.count(),
     })
-
-
 
 
 @api_view(["POST"])
@@ -634,7 +685,6 @@ def opd_dashboard(request):
             doctor=doctor, booking_date=booking_date
         ).order_by("token_number")
 
-        # Always initialize BOTH sessions
         sessions = {
             "morning": {"online": [], "walkin": [], "available_walkin": list(WALKIN_RANGE), "total_booked": 0},
             "evening": {"online": [], "walkin": [], "available_walkin": list(WALKIN_RANGE), "total_booked": 0},
@@ -649,27 +699,28 @@ def opd_dashboard(request):
                 "status"      : b.status,
                 "is_confirmed": b.is_confirmed,
                 "payment"     : b.payment_status,
-                "type"        : "online" if b.token_number in ONLINE_RANGE else "walkin",
+                "type"        : "walkin" if b.is_walkin else "online",
             }
-            if b.token_number in ONLINE_RANGE:
-                sessions[sess]["online"].append(entry)
-            else:
+            if b.is_walkin:
                 sessions[sess]["walkin"].append(entry)
                 if b.token_number in sessions[sess]["available_walkin"]:
                     sessions[sess]["available_walkin"].remove(b.token_number)
+            else:
+                sessions[sess]["online"].append(entry)
             sessions[sess]["total_booked"] += 1
 
         data.append({
-            "doctor_id" : doctor.id,
+            "doctor_id"  : doctor.id,
             "doctor_name": doctor.full_name,
-            "hospital"  : doctor.hospital.name,
-            "department": doctor.department.name,
-            "opd_status": opd_status,
-            "date"      : booking_date,
-            "sessions"  : sessions,
+            "hospital"   : doctor.hospital.name,
+            "department" : doctor.department.name,
+            "opd_status" : opd_status,
+            "date"       : booking_date,
+            "sessions"   : sessions,
         })
 
     return Response(data)
+
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -739,25 +790,27 @@ def doctor_tokens_by_date(request):
         if b.session not in sessions:
             sessions[b.session] = []
         sessions[b.session].append({
-            "id": b.id, "token": b.token_number,
+            "id"          : b.id,
+            "token"       : b.token_number,
             "patient_name": b.display_name,
-            "type": "online" if b.is_online else "walkin",
-            "status": b.status, "is_confirmed": b.is_confirmed,
-            "payment": b.payment_status,
+            "type"        : "walkin" if b.is_walkin else "online",
+            "status"      : b.status,
+            "is_confirmed": b.is_confirmed,
+            "payment"     : b.payment_status,
         })
 
     return Response({
-        "doctor": DoctorListSerializer(doctor).data,
-        "date": booking_date, "sessions": sessions,
+        "doctor"  : DoctorListSerializer(doctor).data,
+        "date"    : booking_date,
+        "sessions": sessions,
     })
 
 
-# ── NEW: Doctor Registration Approval ───────────────────
+# ── Doctor Registration Approval ────────────────────────
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def pending_doctors(request):
-    """List all unapproved doctor registrations."""
     doctors = Doctor.objects.filter(is_approved=False).select_related(
         "user", "hospital", "department"
     )
@@ -777,7 +830,6 @@ def pending_doctors(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def approve_doctor(request, doctor_id):
-    """Approve a pending doctor registration."""
     try:
         doctor = Doctor.objects.get(id=doctor_id, is_approved=False)
     except Doctor.DoesNotExist:
@@ -804,24 +856,29 @@ def approve_doctor(request, doctor_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def reject_doctor(request, doctor_id):
-    """Reject and remove a pending doctor registration."""
     try:
         doctor = Doctor.objects.get(id=doctor_id, is_approved=False)
     except Doctor.DoesNotExist:
         return Response({"error": "Doctor not found or already approved."}, status=404)
 
     name = doctor.full_name
-    doctor.user.delete()  # cascades to Doctor record
+    doctor.user.delete()
     return Response({"message": f"Dr. {name}'s registration rejected and removed."})
 
 
-# ── NEW: Consultation History ────────────────────────────
+# ── Consultation History ─────────────────────────────────
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def consultation_history(request):
+    """
+    Returns completed consultations.
+    Includes both online and walk-in patients with full details.
+    Filters: ?date=YYYY-MM-DD, ?doctor_id=<int>, ?type=online|walkin
+    """
     date_str  = request.GET.get("date")
     doctor_id = request.GET.get("doctor_id")
+    type_filter = request.GET.get("type")  # "online" or "walkin"
 
     qs = Booking.objects.filter(
         status=BookingStatus.DONE,
@@ -833,17 +890,41 @@ def consultation_history(request):
         bd = parse_date(date_str)
         if bd:
             qs = qs.filter(booking_date=bd)
-    # No date filter = return ALL history
 
     if doctor_id:
         qs = qs.filter(doctor_id=doctor_id)
 
+    if type_filter == "online":
+        qs = qs.filter(token_number__range=(ONLINE_TOKEN_START, ONLINE_TOKEN_END))
+    elif type_filter == "walkin":
+        qs = qs.filter(token_number__in=WALKIN_RANGE)
+
     data = []
     for b in qs:
+        # ── Patient details — handle both online and walk-in ──
+        if b.is_walkin:
+            patient_info = {
+                "name"  : b.walkin_name or "Walk-in",
+                "type"  : "walkin",
+                "email" : "—",
+                "phone" : "—",        # add walkin_phone field to model if needed
+            }
+        else:
+            patient_info = {
+                "name"  : b.display_name,
+                "type"  : "online",
+                "email" : b.patient.user.email if b.patient else "—",
+                "phone" : getattr(b.patient.user, "phone", "—") if b.patient else "—",
+            }
+
         data.append({
             "id"                   : b.id,
             "token"                : b.token_number,
+            "patient"              : patient_info,
+            # keep flat fields too for easy frontend access
             "patient_name"         : b.display_name,
+            "patient_type"         : patient_info["type"],
+            "patient_email"        : patient_info["email"],
             "doctor_name"          : b.doctor.full_name,
             "hospital"             : b.doctor.hospital.name,
             "department"           : b.doctor.department.name,
@@ -853,8 +934,8 @@ def consultation_history(request):
             "consulting_ended_at"  : b.consulting_ended_at,
             "duration_minutes"     : b.consulting_duration_minutes,
             "payment_status"       : b.payment_status,
-            "type"                 : "online" if b.token_number in ONLINE_RANGE else "walkin",
         })
+
     return Response(data)
 
 
@@ -903,6 +984,7 @@ def queue_status(request):
         "started_at"         : opd_day.started_at,
         "current_token"      : current.token_number if current else None,
         "current_patient"    : current.display_name if current else None,
+        "current_patient_type": "walkin" if current and current.is_walkin else "online" if current else None,
         "queue_length"       : waiting_count,
         "done_count"         : done_count,
         "avg_consult_minutes": opd_day.avg_consult_minutes,
@@ -931,10 +1013,10 @@ def _update_avg_consult_time(doctor, booking_date):
             avg_consult_minutes=max(1, round(avg))
         )
 
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def resend_opd_notification(request, booking_id):
-    """Staff resends OPD start notification email to a specific patient."""
     try:
         booking = Booking.objects.get(id=booking_id)
     except Booking.DoesNotExist:
@@ -973,7 +1055,6 @@ def resend_opd_notification(request, booking_id):
 @permission_classes([IsAuthenticated])
 @transaction.atomic
 def staff_confirm_attendance(request, booking_id):
-    """Staff manually confirms attendance for a patient."""
     try:
         booking = Booking.objects.select_for_update().get(id=booking_id)
     except Booking.DoesNotExist:
@@ -1003,4 +1084,5 @@ def staff_confirm_attendance(request, booking_id):
         "message"     : f"Token #{booking.token_number} confirmed.",
         "token_number": booking.token_number,
         "patient_name": booking.display_name,
+        "patient_type": "walkin" if booking.is_walkin else "online",
     })

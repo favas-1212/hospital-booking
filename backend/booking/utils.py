@@ -159,87 +159,96 @@ def send_mail_safe(subject, message, to, from_email="no-reply@medqueue.com"):
 # ─────────────────────────────────────────────
 
 def generate_ticket_pdf(booking):
-    """
-    Generate an OPD ticket PDF using ReportLab.
-    Returns raw PDF bytes.
-    Install: pip install reportlab
-    """
     from io import BytesIO
     from reportlab.lib.pagesizes import A6
+    from reportlab.pdfgen import canvas
     from reportlab.lib import colors
     from reportlab.lib.units import mm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
     buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A6,
-        topMargin=8 * mm,
-        bottomMargin=8 * mm,
-        leftMargin=10 * mm,
-        rightMargin=10 * mm,
-    )
+    PAGE_W, PAGE_H = A6
 
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("title", parent=styles["Title"],
-                                  fontSize=14, textColor=colors.HexColor("#1a73e8"),
-                                  alignment=TA_CENTER, spaceAfter=4)
-    subtitle_style = ParagraphStyle("subtitle", parent=styles["Normal"],
-                                     fontSize=8, textColor=colors.grey,
-                                     alignment=TA_CENTER, spaceAfter=6)
-    token_style = ParagraphStyle("token", parent=styles["Normal"],
-                                  fontSize=36, fontName="Helvetica-Bold",
-                                  textColor=colors.HexColor("#1a73e8"),
-                                  alignment=TA_CENTER, spaceAfter=4)
-    label_style = ParagraphStyle("label", parent=styles["Normal"],
-                                  fontSize=8, textColor=colors.grey, spaceAfter=1)
-    value_style = ParagraphStyle("value", parent=styles["Normal"],
-                                  fontSize=9, fontName="Helvetica-Bold", spaceAfter=4)
+    c = canvas.Canvas(buffer, pagesize=A6)
 
-    story = [
-        Paragraph("MedQueue", title_style),
-        Paragraph("OPD Appointment Ticket", subtitle_style),
-        HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#1a73e8")),
-        Spacer(1, 4 * mm),
-        Paragraph("TOKEN NUMBER", label_style),
-        Paragraph(f"#{booking.token_number}", token_style),
-        Spacer(1, 2 * mm),
-        HRFlowable(width="100%", thickness=0.3, color=colors.lightgrey),
-        Spacer(1, 3 * mm),
+    BLUE        = colors.HexColor("#1a73e8")
+    DARK_BLUE   = colors.HexColor("#1565c0")
+    WHITE       = colors.white
+    MUTED       = colors.HexColor("#5f6368")
+    ROW_ALT     = colors.HexColor("#f8f9fa")
+    BORDER      = colors.HexColor("#e0e0e0")
+    WARN_BG     = colors.HexColor("#fff8e1")
+    WARN_BORDER = colors.HexColor("#ffe082")
+    WARN_TEXT   = colors.HexColor("#e65100")
+    TEXT_DARK   = colors.HexColor("#202124")
+
+    # Header
+    header_h = 28 * mm
+    c.setFillColor(BLUE)
+    c.rect(0, PAGE_H - header_h, PAGE_W, header_h, fill=1, stroke=0)
+    c.setFillColor(WHITE)
+    c.setFont("Helvetica-Bold", 16)
+    c.drawCentredString(PAGE_W / 2, PAGE_H - 14 * mm, "MedQueue")
+    c.setFillColor(colors.HexColor("#bbdefb"))
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(PAGE_W / 2, PAGE_H - 21 * mm, "OPD Appointment Ticket")
+
+    # Token block
+    token_top = PAGE_H - header_h
+    token_h = 26 * mm
+    c.setFillColor(DARK_BLUE)
+    c.rect(0, token_top - token_h, PAGE_W, token_h, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor("#90caf9"))
+    c.setFont("Helvetica-Bold", 7)
+    c.drawCentredString(PAGE_W / 2, token_top - 8 * mm, "TOKEN  NUMBER")
+    c.setFillColor(WHITE)
+    c.setFont("Helvetica-Bold", 38)
+    c.drawCentredString(PAGE_W / 2, token_top - 20 * mm, f"#{booking.token_number}")
+
+    # Info rows
+    info_top = token_top - token_h - 3 * mm
+    row_h = 8.5 * mm
+    label_x = 8 * mm
+    value_x = 38 * mm
+    right_x = PAGE_W - 6 * mm
+
+    fields = [
+        ("PATIENT",    booking.display_name),
+        ("DOCTOR",     f"Dr. {booking.doctor.full_name}"),
+        ("HOSPITAL",   booking.doctor.hospital.name),
+        ("DEPARTMENT", booking.doctor.department.name),
+        ("DATE",       str(booking.booking_date)),
+        ("SESSION",    booking.get_session_display()),
+        ("BOOKED AT",  booking.created_at.strftime("%d %b %Y  %H:%M")),
     ]
 
-    # Info table
-    info_data = [
-        ["Patient",  booking.display_name],
-        ["Doctor",   f"Dr. {booking.doctor.full_name}"],
-        ["Hospital", booking.doctor.hospital.name],
-        ["Dept",     booking.doctor.department.name],
-        ["Date",     str(booking.booking_date)],
-        ["Session",  booking.get_session_display()],
-        ["Booked At", booking.created_at.strftime("%d %b %Y %H:%M")],
-    ]
+    for i, (label, value) in enumerate(fields):
+        y_top    = info_top - i * row_h
+        y_bottom = y_top - row_h
+        if i % 2 == 1:
+            c.setFillColor(ROW_ALT)
+            c.rect(0, y_bottom, PAGE_W, row_h, fill=1, stroke=0)
+        c.setStrokeColor(BORDER)
+        c.setLineWidth(0.3)
+        c.line(label_x, y_bottom, right_x, y_bottom)
+        c.setFillColor(MUTED)
+        c.setFont("Helvetica", 6.5)
+        c.drawString(label_x, y_bottom + 5.5, label)
+        c.setFillColor(TEXT_DARK)
+        c.setFont("Helvetica-Bold", 8.5)
+        c.drawString(value_x, y_bottom + 5.5, value)
 
-    tbl = Table(info_data, colWidths=[22 * mm, 58 * mm])
-    tbl.setStyle(TableStyle([
-        ("FONTNAME",  (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTSIZE",  (0, 0), (-1, -1), 8),
-        ("TEXTCOLOR", (0, 0), (0, -1), colors.grey),
-        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
-        ("TOPPADDING",    (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
-    story.append(tbl)
-    story.append(Spacer(1, 4 * mm))
+    # Warning box
+    warn_top = info_top - len(fields) * row_h - 4 * mm
+    warn_h   = 10 * mm
+    margin   = 7 * mm
+    c.setFillColor(WARN_BG)
+    c.setStrokeColor(WARN_BORDER)
+    c.setLineWidth(0.5)
+    c.roundRect(margin, warn_top - warn_h, PAGE_W - 2 * margin, warn_h, 2 * mm, fill=1, stroke=1)
+    c.setFillColor(WARN_TEXT)
+    c.setFont("Helvetica-Bold", 7)
+    c.drawCentredString(PAGE_W / 2, warn_top - 4.5 * mm,
+                        "! Confirm your attendance once the OPD session starts.")
 
-    story.append(HRFlowable(width="100%", thickness=0.3, color=colors.lightgrey))
-    story.append(Spacer(1, 2 * mm))
-    story.append(Paragraph(
-        "⚠ Confirm your attendance on MedQueue once OPD starts.",
-        ParagraphStyle("note", parent=styles["Normal"], fontSize=7,
-                       textColor=colors.HexColor("#e65100"), alignment=TA_CENTER)
-    ))
-
-    doc.build(story)
+    c.save()
     return buffer.getvalue()

@@ -128,10 +128,10 @@ class BookingSerializer(serializers.ModelSerializer):
         if booking_date > today + timedelta(days=7):
             raise serializers.ValidationError("Booking allowed only within the next 7 days.")
 
-        if booking_date == today and _session_cutoff_passed(session):
-            raise serializers.ValidationError(
-                f"Booking closed. Online booking closes {SESSION_CUTOFF_HOURS} hours before session start."
-            )
+        # if booking_date == today and _session_cutoff_passed(session):
+        #     raise serializers.ValidationError(
+        #         f"Booking closed. Online booking closes {SESSION_CUTOFF_HOURS} hours before session start."
+        #     )
 
         request = self.context.get("request")
         if not (request and request.user.is_authenticated):
@@ -142,8 +142,16 @@ class BookingSerializer(serializers.ModelSerializer):
         except Patient.DoesNotExist:
             raise serializers.ValidationError("Only patient accounts can book tokens.")
 
-        if Booking.objects.filter(patient=patient, booking_date=booking_date).exists():
-            raise serializers.ValidationError("You already have a booking for this date.")
+# Allow multiple departments — but only one booking per doctor per session
+        if Booking.objects.filter(
+        patient=patient,
+        booking_date=booking_date,
+        doctor=data.get("doctor"),
+        session=session,
+        ).exists():
+            raise serializers.ValidationError(
+            "You already have a booking with this doctor for this session today."
+        )
 
         data["_patient"] = patient
         return data
@@ -222,17 +230,17 @@ class WalkinBookingSerializer(serializers.Serializer):
     @transaction.atomic
     def create(self, validated_data):
         return Booking.objects.create(
-            doctor=validated_data["doctor"],
-            session=validated_data["session"],
-            booking_date=validated_data["booking_date"],
-            token_number=validated_data["token_number"],
-            walkin_name=validated_data["patient_name"],
-            payment_status=PaymentStatus.OFFLINE,
-            status=BookingStatus.APPROVED,
-            is_confirmed=True,
-            queue_insert_time=now(),
-            patient=None,
-        )
+        doctor=validated_data["doctor"],
+        session=validated_data["session"],
+        booking_date=validated_data["booking_date"],
+        token_number=validated_data["token_number"],
+        walkin_name=validated_data["patient_name"],
+        payment_status=PaymentStatus.OFFLINE,
+        status=BookingStatus.WAITING,   # ← fixed
+        is_confirmed=True,
+        queue_insert_time=now(),
+        patient=None,
+    )
 
 
 # ─────────────────────────────────────────────

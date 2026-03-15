@@ -49,12 +49,12 @@ class OPDSession(models.TextChoices):
 
 
 class BookingStatus(models.TextChoices):
-    PENDING    = "pending",    "Pending"        # just booked, waiting payment / confirmation
-    APPROVED   = "approved",   "Approved"       # patient confirmed attendance
-    WAITING    = "waiting",    "Waiting"        # in queue
-    CONSULTING = "consulting", "Consulting"     # currently with doctor
-    DONE       = "done",       "Done"           # consultation complete
-    SKIPPED    = "skipped",    "Skipped"        # did not show up in time
+    PENDING    = "pending",    "Pending"
+    APPROVED   = "approved",   "Approved"
+    WAITING    = "waiting",    "Waiting"
+    CONSULTING = "consulting", "Consulting"
+    DONE       = "done",       "Done"
+    SKIPPED    = "skipped",    "Skipped"
 
 
 class PaymentStatus(models.TextChoices):
@@ -72,8 +72,8 @@ MAX_TOKENS_PER_SESSION = 60
 ONLINE_TOKEN_START     = 16
 ONLINE_TOKEN_END       = 35
 
-ONLINE_RANGE = list(range(ONLINE_TOKEN_START, ONLINE_TOKEN_END + 1))          # 16-35
-WALKIN_RANGE = list(range(1, ONLINE_TOKEN_START)) + list(range(ONLINE_TOKEN_END + 1, MAX_TOKENS_PER_SESSION + 1))  # 1-15, 36-60
+ONLINE_RANGE = list(range(ONLINE_TOKEN_START, ONLINE_TOKEN_END + 1))
+WALKIN_RANGE = list(range(1, ONLINE_TOKEN_START)) + list(range(ONLINE_TOKEN_END + 1, MAX_TOKENS_PER_SESSION + 1))
 
 
 # ─────────────────────────────────────────────
@@ -83,11 +83,11 @@ WALKIN_RANGE = list(range(1, ONLINE_TOKEN_START)) + list(range(ONLINE_TOKEN_END 
 class Booking(models.Model):
 
     # ── Relationships ──
-    doctor     = models.ForeignKey(Doctor,  on_delete=models.CASCADE, related_name="bookings")
-    patient    = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="bookings", null=True, blank=True)
+    doctor  = models.ForeignKey(Doctor,  on_delete=models.CASCADE, related_name="bookings")
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="bookings", null=True, blank=True)
 
     # ── Walk-in support ──
-    walkin_name = models.CharField(max_length=100, null=True, blank=True, help_text="Name for walk-in patients")
+    walkin_name = models.CharField(max_length=100, null=True, blank=True)
 
     # ── Booking details ──
     session      = models.CharField(max_length=10, choices=OPDSession.choices)
@@ -95,20 +95,15 @@ class Booking(models.Model):
     token_number = models.PositiveIntegerField()
 
     # ── Status tracking ──
-    payment_status = models.CharField(
-        max_length=20, choices=PaymentStatus.choices, default=PaymentStatus.PENDING
-    )
-    status = models.CharField(
-        max_length=15, choices=BookingStatus.choices, default=BookingStatus.PENDING
-    )
+    payment_status = models.CharField(max_length=20, choices=PaymentStatus.choices, default=PaymentStatus.PENDING)
+    status         = models.CharField(max_length=15, choices=BookingStatus.choices, default=BookingStatus.PENDING)
 
-    # ── Confirmation (online patients must confirm 30 min before OPD) ──
-    is_confirmed       = models.BooleanField(default=False)
-    confirmation_time  = models.DateTimeField(null=True, blank=True)
+    # ── Confirmation ──
+    is_confirmed      = models.BooleanField(default=False)
+    confirmation_time = models.DateTimeField(null=True, blank=True)
 
     # ── Queue position tracking ──
-    queue_insert_time  = models.DateTimeField(null=True, blank=True,
-        help_text="When patient joined the active queue (after confirmation)")
+    queue_insert_time = models.DateTimeField(null=True, blank=True)
 
     # ── Timing ──
     consulting_started_at = models.DateTimeField(null=True, blank=True)
@@ -121,27 +116,23 @@ class Booking(models.Model):
 
     class Meta:
         constraints = [
+            # One token per doctor+session+date (prevents double-booking same slot)
             models.UniqueConstraint(
                 fields=["doctor", "session", "booking_date", "token_number"],
                 name="unique_token_per_doctor_session"
             ),
+            # One booking per patient per doctor per session per day
+            # (allows booking MULTIPLE doctors/departments on same day)
             models.UniqueConstraint(
-                fields=["patient", "booking_date"],
-                name="unique_patient_per_day",
-                condition=models.Q(patient__isnull=False)
+                fields=["patient", "doctor", "session", "booking_date"],
+                name="unique_patient_per_doctor_session",
+                condition=models.Q(patient__isnull=False),
             ),
         ]
         ordering = ["booking_date", "session", "token_number"]
 
-    def clean(self):
-        today = date.today()
-        if self.booking_date < today:
-            raise ValidationError("Cannot book past dates.")
-        if self.booking_date > today + timedelta(days=7):
-            raise ValidationError("Booking allowed only for the next 7 days.")
-
+    # ── Removed full_clean() from save() — it blocks .update() and bulk ops ──
     def save(self, *args, **kwargs):
-        self.full_clean()
         super().save(*args, **kwargs)
 
     @property
@@ -180,7 +171,6 @@ class OPDDay(models.Model):
     ended_at   = models.DateTimeField(null=True, blank=True)
     is_active  = models.BooleanField(default=False)
 
-    # Average consulting time in minutes (auto-calculated, editable)
     avg_consult_minutes = models.PositiveIntegerField(default=7)
 
     class Meta:
