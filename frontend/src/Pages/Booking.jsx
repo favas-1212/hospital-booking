@@ -149,8 +149,8 @@ function Booking() {
           <label style={S.label}>Select Session</label>
           <div style={{ display:"flex", gap:12 }}>
             {[
-              { val:"morning", icon:"🌅", label:"Morning", sub:"10 AM – 12 PM", color:"#f59e0b" },
-              { val:"evening", icon:"🌆", label:"Evening", sub:"3 PM – 5 PM",   color:"#3b82f6" },
+              { val:"morning",  label:"Morning", sub:"10 AM – 12 PM", color:"#f59e0b" },
+              { val:"evening",  label:"Evening", sub:"3 PM – 5 PM",   color:"#3b82f6" },
             ].map(s => (
               <div key={s.val} onClick={() => setSession(s.val)} style={{
                 flex:1, padding:"14px 10px", textAlign:"center", borderRadius:12,

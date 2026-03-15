@@ -6,6 +6,7 @@ import {
   bookWalkinToken, fetchTokenAvailability,
   getPendingDoctors, approveDoctor, rejectDoctor,
   getConsultationHistory, getApprovedDoctors,
+  resendOPDNotification, staffConfirmAttendance,
 } from "../services/allApi";
 
 const TABS      = ["OPD Management", "Doctor Approvals", "Consultation History"];
@@ -19,34 +20,33 @@ function OPDDashboard() {
   const today    = new Date().toISOString().split("T")[0];
 
   const [activeTab,     setActiveTab]     = useState(0);
-
-  // ── Tab 1 ──
   const [doctors,       setDoctors]       = useState([]);
   const [date,          setDate]          = useState(today);
   const [loading,       setLoading]       = useState(true);
   const [acting,        setActing]        = useState(null);
 
-  // Walk-in modal
   const [walkinModal,   setWalkinModal]   = useState(null);
   const [walkinName,    setWalkinName]    = useState("");
   const [walkinToken,   setWalkinToken]   = useState("");
   const [availTokens,   setAvailTokens]   = useState([]);
   const [bookingWalkin, setBookingWalkin] = useState(false);
 
-  // ── Tab 2 ──
   const [pendingDocs,   setPendingDocs]   = useState([]);
   const [docsLoading,   setDocsLoading]   = useState(false);
 
-  // ── Tab 3 ──
   const [history,       setHistory]       = useState([]);
   const [histLoading,   setHistLoading]   = useState(false);
   const [histDate,      setHistDate]      = useState(today);
   const [histDoctor,    setHistDoctor]    = useState("");
+  const [histType,      setHistType]      = useState("");   // "online" | "walkin" | ""
   const [allDoctors,    setAllDoctors]    = useState([]);
 
-  // ══════════════════════════════════════════════════════
+  // detail modal for walk-in / online patient info
+  const [detailModal,   setDetailModal]   = useState(null);
+
+  // ══════════════════════════════════════════════════
   // TAB 1 — OPD MANAGEMENT
-  // ══════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
@@ -109,7 +109,7 @@ function OPDDashboard() {
     setActing(id + "_approve");
     try {
       await approveBooking(id);
-      toast.success("Token approved");
+      toast.success("Token moved to consulting");
       fetchDashboard();
     } catch (err) { toast.error(err.response?.data?.error || "Approve failed"); }
     finally { setActing(null); }
@@ -126,9 +126,30 @@ function OPDDashboard() {
     finally { setActing(null); }
   };
 
-  // ══════════════════════════════════════════════════════
+  const handleResendNotification = async (id) => {
+    setActing(id + "_resend");
+    try {
+      const res = await resendOPDNotification(id);
+      toast.success(`📧 ${res.data.message}`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Failed to resend notification");
+    } finally { setActing(null); }
+  };
+
+  const handleStaffConfirm = async (id, tokenNum) => {
+    setActing(id + "_confirm");
+    try {
+      await staffConfirmAttendance(id);
+      toast.success(`✅ Token #${tokenNum} confirmed`);
+      fetchDashboard();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Confirm failed");
+    } finally { setActing(null); }
+  };
+
+  // ══════════════════════════════════════════════════
   // TAB 2 — DOCTOR APPROVALS
-  // ══════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════
 
   const fetchPendingDoctors = useCallback(async () => {
     setDocsLoading(true);
@@ -166,18 +187,18 @@ function OPDDashboard() {
     finally { setActing(null); }
   };
 
-  // ══════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════
   // TAB 3 — CONSULTATION HISTORY
-  // ══════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════
 
   const fetchHistory = useCallback(async () => {
     setHistLoading(true);
     try {
-      const res = await getConsultationHistory(histDate, histDoctor);
+      const res = await getConsultationHistory(histDate, histDoctor, histType);
       setHistory(res.data);
     } catch { toast.error("Failed to load consultation history"); }
     finally { setHistLoading(false); }
-  }, [histDate, histDoctor]);
+  }, [histDate, histDoctor, histType]);
 
   useEffect(() => {
     if (activeTab === 2) {
@@ -186,15 +207,14 @@ function OPDDashboard() {
     }
   }, [activeTab, fetchHistory]);
 
-  // History grouped by session for display
-  const histMorning = history.filter(h => h.session === "morning");
-  const histEvening = history.filter(h => h.session === "evening");
   const totalDuration = history.reduce((s, h) => s + (h.duration_minutes || 0), 0);
   const avgDuration   = history.length ? (totalDuration / history.length).toFixed(1) : 0;
+  const onlineCount   = history.filter(h => h.patient_type === "online").length;
+  const walkinCount   = history.filter(h => h.patient_type === "walkin").length;
 
-  // ══════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════
   // RENDER
-  // ══════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════
 
   return (
     <div style={S.page}>
@@ -227,9 +247,9 @@ function OPDDashboard() {
         ))}
       </div>
 
-      {/* ════════════════════════════════════════
+      {/* ══════════════════════════════════════════
           TAB 1 — OPD MANAGEMENT
-      ════════════════════════════════════════ */}
+      ══════════════════════════════════════════ */}
       {activeTab === 0 && (
         <div style={S.tabContent}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
@@ -270,7 +290,7 @@ function OPDDashboard() {
                   </div>
                 </div>
 
-                {/* Both sessions always rendered */}
+                {/* Sessions */}
                 <div style={{ padding:"16px 20px" }}>
                   {SESSIONS.map(sess => {
                     const sessData  = doc.sessions[sess] || { online:[], walkin:[], total_booked:0 };
@@ -279,21 +299,18 @@ function OPDDashboard() {
 
                     return (
                       <div key={sess} style={{ ...S.sessionBlock, marginBottom: sess==="morning" ? 16 : 0 }}>
-                        {/* Session header */}
                         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
                           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                             <h4 style={{ margin:0, color:"#0f4c75", fontSize:14 }}>
                               {sess==="morning" ? "🌅" : "🌆"} {sess.charAt(0).toUpperCase()+sess.slice(1)} Session
                             </h4>
                             <span style={{
-                              fontSize:11, padding:"2px 10px", borderRadius:10,
+                              fontSize:11, padding:"2px 10px", borderRadius:10, fontWeight:600,
                               background: allTokens.length > 0 ? "#dbeafe" : "#f1f5f9",
                               color:      allTokens.length > 0 ? "#1d4ed8" : "#94a3b8",
-                              fontWeight: 600,
                             }}>
                               {allTokens.length} booked
                             </span>
-                            {/* Per-session counts */}
                             {allTokens.length > 0 && (
                               <span style={{ fontSize:11, color:"#94a3b8" }}>
                                 ({sessData.online?.length||0} online · {sessData.walkin?.length||0} walk-in)
@@ -305,9 +322,8 @@ function OPDDashboard() {
                           </button>
                         </div>
 
-                        {/* Token table or empty state */}
                         {allTokens.length === 0 ? (
-                          <div style={{ textAlign:"center", padding:"20px", color:"#94a3b8", fontSize:13,
+                          <div style={{ textAlign:"center", padding:"18px", color:"#94a3b8", fontSize:13,
                             background:"#fff", borderRadius:8, border:"1px dashed #e2e8f0" }}>
                             No tokens booked for {sess} session
                           </div>
@@ -345,28 +361,59 @@ function OPDDashboard() {
                                       }}>{t.status}</span>
                                     </td>
                                     <td style={S.td}>
-                                      <span style={{ fontSize:12, color: PAY_COLOR[t.payment]||"#475569", fontWeight:600 }}>
+                                      <span style={{ fontSize:12, color:PAY_COLOR[t.payment]||"#475569", fontWeight:600 }}>
                                         {t.payment}
                                       </span>
                                     </td>
                                     <td style={S.td}>
                                       {t.is_confirmed
-                                        ? <span style={{ color:"#10b981" }}>✅</span>
-                                        : <span style={{ color:"#f59e0b" }}>⏳</span>}
+                                        ? <span style={{ color:"#10b981", fontWeight:700 }}>✅ Yes</span>
+                                        : <span style={{ color:"#f59e0b", fontWeight:700 }}>⏳ No</span>}
                                     </td>
                                     <td style={S.td}>
-                                      {t.status === "waiting" && doc.opd_status?.is_active && (
-                                        <div style={{ display:"flex", gap:6 }}>
-                                          <button onClick={() => handleApprove(t.id)}
-                                            disabled={!!acting} style={S.approveBtn}>
-                                            {acting===t.id+"_approve" ? "..." : "✓"}
+                                      <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+
+                                        {/* Staff confirm unconfirmed online patient */}
+                                        {!t.is_confirmed && t.type==="online" &&
+                                          ["pending","waiting"].includes(t.status) && (
+                                          <button
+                                            onClick={() => handleStaffConfirm(t.id, t.token)}
+                                            disabled={!!acting}
+                                            style={S.confirmBtn}
+                                            title="Manually confirm attendance">
+                                            {acting===t.id+"_confirm" ? "..." : "✔ Confirm"}
                                           </button>
-                                          <button onClick={() => handleReject(t.id)}
-                                            disabled={!!acting} style={S.rejectBtn}>
-                                            {acting===t.id+"_reject" ? "..." : "✗"}
+                                        )}
+
+                                        {/* Call / Reject waiting tokens */}
+                                        {t.status==="waiting" && doc.opd_status?.is_active && (
+                                          <>
+                                            <button onClick={() => handleApprove(t.id)}
+                                              disabled={!!acting} style={S.approveBtn}
+                                              title="Move to consulting">
+                                              {acting===t.id+"_approve" ? "..." : "▶ Call"}
+                                            </button>
+                                            <button onClick={() => handleReject(t.id)}
+                                              disabled={!!acting} style={S.rejectBtn}
+                                              title="Reject token">
+                                              {acting===t.id+"_reject" ? "..." : "✗"}
+                                            </button>
+                                          </>
+                                        )}
+
+                                        {/* Resend notification to unconfirmed online patients */}
+                                        {!t.is_confirmed && t.type==="online" &&
+                                          ["pending","waiting"].includes(t.status) && (
+                                          <button
+                                            onClick={() => handleResendNotification(t.id)}
+                                            disabled={!!acting}
+                                            style={S.resendBtn}
+                                            title="Resend OPD notification email">
+                                            {acting===t.id+"_resend" ? "..." : "📧"}
                                           </button>
-                                        </div>
-                                      )}
+                                        )}
+
+                                      </div>
                                     </td>
                                   </tr>
                                 ))}
@@ -384,9 +431,9 @@ function OPDDashboard() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════
+      {/* ══════════════════════════════════════════
           TAB 2 — DOCTOR APPROVALS
-      ════════════════════════════════════════ */}
+      ══════════════════════════════════════════ */}
       {activeTab === 1 && (
         <div style={S.tabContent}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
@@ -435,9 +482,9 @@ function OPDDashboard() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════
+      {/* ══════════════════════════════════════════
           TAB 3 — CONSULTATION HISTORY
-      ════════════════════════════════════════ */}
+      ══════════════════════════════════════════ */}
       {activeTab === 2 && (
         <div style={S.tabContent}>
 
@@ -457,6 +504,14 @@ function OPDDashboard() {
                 ))}
               </select>
             </div>
+            <div>
+              <label style={S.filterLabel}>Patient Type</label>
+              <select value={histType} onChange={e => setHistType(e.target.value)} style={S.input}>
+                <option value="">All Types</option>
+                <option value="online">Online</option>
+                <option value="walkin">Walk-in</option>
+              </select>
+            </div>
             <button onClick={fetchHistory} style={{ ...S.greenBtn, padding:"9px 18px" }}>
               🔍 Search
             </button>
@@ -464,17 +519,19 @@ function OPDDashboard() {
 
           {/* Summary stats */}
           {history.length > 0 && (
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:20 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:12, marginBottom:20 }}>
               {[
-                { label:"Total",         val: history.length,               icon:"📋", color:"#0f4c75" },
-                { label:"Morning",       val: histMorning.length,           icon:"🌅", color:"#6366f1" },
-                { label:"Evening",       val: histEvening.length,           icon:"🌆", color:"#f59e0b" },
-                { label:"Avg Duration",  val: `${avgDuration} min`,         icon:"⏱",  color:"#10b981" },
+                { label:"Total",        val: history.length,    icon:"📋", color:"#0f4c75" },
+                { label:"Morning",      val: history.filter(h=>h.session==="morning").length, icon:"🌅", color:"#6366f1" },
+                { label:"Evening",      val: history.filter(h=>h.session==="evening").length, icon:"🌆", color:"#f59e0b" },
+                { label:"Online",       val: onlineCount,       icon:"🌐", color:"#1d4ed8" },
+                { label:"Walk-in",      val: walkinCount,       icon:"🚶", color:"#059669" },
+                { label:"Avg Duration", val: `${avgDuration}m`, icon:"⏱",  color:"#10b981" },
               ].map(s => (
                 <div key={s.label} style={{ ...S.statCard, borderTop:`3px solid ${s.color}` }}>
-                  <div style={{ fontSize:20 }}>{s.icon}</div>
-                  <div style={{ fontWeight:800, fontSize:22, color:s.color }}>{s.val}</div>
-                  <div style={{ fontSize:12, color:"#94a3b8" }}>{s.label}</div>
+                  <div style={{ fontSize:18 }}>{s.icon}</div>
+                  <div style={{ fontWeight:800, fontSize:20, color:s.color }}>{s.val}</div>
+                  <div style={{ fontSize:11, color:"#94a3b8" }}>{s.label}</div>
                 </div>
               ))}
             </div>
@@ -483,7 +540,6 @@ function OPDDashboard() {
           {histLoading ? <Spinner /> : history.length === 0 ? (
             <Empty text="No consultations found" icon="📋" />
           ) : (
-            /* Render morning then evening separately */
             SESSIONS.map(sess => {
               const sessHistory = history.filter(h => h.session === sess);
               return (
@@ -510,38 +566,69 @@ function OPDDashboard() {
                       <table style={S.table}>
                         <thead>
                           <tr style={{ background:"#f8fafc" }}>
-                            {["Token","Patient","Doctor","Dept","Date","Started","Duration","Payment","Type"].map(h => (
+                            {["Token","Patient","Type","Doctor","Dept","Date","Started","Ended","Duration","Payment","Details"].map(h => (
                               <th key={h} style={S.th}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {sessHistory.map(h => (
-                            <tr key={h.id}>
+                            <tr key={h.id} style={{ background: h.patient_type==="walkin" ? "#f0fdf4" : "#fff" }}>
                               <td style={S.td}><b style={{ color:"#0f4c75" }}>#{h.token}</b></td>
-                              <td style={S.td}>{h.patient_name}</td>
+
+                              {/* Patient name — walk-ins shown in green */}
+                              <td style={S.td}>
+                                <span style={{ color: h.patient_type==="walkin" ? "#059669" : "#1e293b", fontWeight:500 }}>
+                                  {h.patient_name}
+                                </span>
+                              </td>
+
+                              {/* Type badge */}
+                              <td style={S.td}>
+                                <span style={{
+                                  fontSize:11, padding:"2px 8px", borderRadius:10, fontWeight:600,
+                                  background: h.patient_type==="online" ? "#dbeafe" : "#dcfce7",
+                                  color:      h.patient_type==="online" ? "#1d4ed8" : "#166534",
+                                }}>
+                                  {h.patient_type==="walkin" ? "🚶 Walk-in" : "🌐 Online"}
+                                </span>
+                              </td>
+
                               <td style={S.td}>{h.doctor_name}</td>
                               <td style={S.td}>{h.department}</td>
                               <td style={S.td}>{h.booking_date}</td>
+
                               <td style={S.td}>
                                 {h.consulting_started_at
                                   ? new Date(h.consulting_started_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
                                   : "—"}
                               </td>
                               <td style={S.td}>
-                                {h.duration_minutes != null ? `${h.duration_minutes.toFixed(1)} min` : "—"}
+                                {h.consulting_ended_at
+                                  ? new Date(h.consulting_ended_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+                                  : "—"}
                               </td>
+
+                              <td style={S.td}>
+                                {h.duration_minutes != null
+                                  ? <span style={{ color:"#059669", fontWeight:600 }}>{h.duration_minutes.toFixed(1)} min</span>
+                                  : "—"}
+                              </td>
+
                               <td style={S.td}>
                                 <span style={{ fontSize:12, color:PAY_COLOR[h.payment_status]||"#475569", fontWeight:600 }}>
                                   {h.payment_status}
                                 </span>
                               </td>
+
+                              {/* Details button — shows patient info in modal */}
                               <td style={S.td}>
-                                <span style={{
-                                  fontSize:11, padding:"2px 8px", borderRadius:10,
-                                  background: h.type==="online" ? "#dbeafe" : "#f3f4f6",
-                                  color:      h.type==="online" ? "#1d4ed8" : "#6b7280",
-                                }}>{h.type}</span>
+                                <button
+                                  onClick={() => setDetailModal(h)}
+                                  style={S.detailBtn}
+                                  title="View patient details">
+                                  👁 View
+                                </button>
                               </td>
                             </tr>
                           ))}
@@ -556,7 +643,7 @@ function OPDDashboard() {
         </div>
       )}
 
-      {/* Walk-in Modal */}
+      {/* Walk-in Booking Modal */}
       {walkinModal && (
         <div style={S.overlay}>
           <div style={S.modal}>
@@ -597,6 +684,93 @@ function OPDDashboard() {
         </div>
       )}
 
+      {/* Patient Detail Modal (Consultation History) */}
+      {detailModal && (
+        <div style={S.overlay}>
+          <div style={{ ...S.modal, maxWidth:480 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+              <h3 style={{ margin:0, color:"#0f4c75" }}>
+                {detailModal.patient_type==="walkin" ? "🚶 Walk-in" : "🌐 Online"} Patient Details
+              </h3>
+              <button onClick={() => setDetailModal(null)}
+                style={{ background:"none", border:"none", fontSize:20, cursor:"pointer", color:"#94a3b8" }}>✕</button>
+            </div>
+
+            {/* Token & type badge */}
+            <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:16 }}>
+              <span style={{ background:"#0f4c75", color:"#fff", borderRadius:8, padding:"6px 14px", fontWeight:700, fontSize:18 }}>
+                #{detailModal.token}
+              </span>
+              <span style={{
+                fontSize:12, padding:"4px 12px", borderRadius:20, fontWeight:600,
+                background: detailModal.patient_type==="online" ? "#dbeafe" : "#dcfce7",
+                color:      detailModal.patient_type==="online" ? "#1d4ed8" : "#166534",
+              }}>
+                {detailModal.patient_type==="walkin" ? "Walk-in Patient" : "Online Booking"}
+              </span>
+            </div>
+
+            {/* Patient info */}
+            <div style={{ background:"#f8fafc", borderRadius:10, padding:"14px 16px", marginBottom:14 }}>
+              <div style={{ fontSize:12, color:"#94a3b8", marginBottom:2 }}>Patient Name</div>
+              <div style={{ fontWeight:700, fontSize:16, color:"#1e293b", marginBottom:10 }}>
+                {detailModal.patient_name}
+              </div>
+
+              {detailModal.patient_type === "online" && (
+                <>
+                  <div style={{ fontSize:12, color:"#94a3b8", marginBottom:2 }}>Email</div>
+                  <div style={{ fontSize:14, color:"#1e293b", marginBottom:10 }}>
+                    {detailModal.patient_email || "—"}
+                  </div>
+                </>
+              )}
+
+              {detailModal.patient_type === "walkin" && (
+                <div style={{
+                  background:"#dcfce7", borderRadius:8, padding:"8px 12px",
+                  fontSize:12, color:"#166534", display:"flex", alignItems:"center", gap:6,
+                }}>
+                  🚶 Walk-in patients are registered at the counter — no account linked.
+                </div>
+              )}
+            </div>
+
+            {/* Consultation info */}
+            <div style={{ background:"#f8fafc", borderRadius:10, padding:"14px 16px" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, fontSize:13 }}>
+                {[
+                  ["Doctor",   detailModal.doctor_name],
+                  ["Hospital", detailModal.hospital],
+                  ["Dept",     detailModal.department],
+                  ["Date",     detailModal.booking_date],
+                  ["Session",  detailModal.session],
+                  ["Payment",  detailModal.payment_status],
+                  ["Started",  detailModal.consulting_started_at
+                                ? new Date(detailModal.consulting_started_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+                                : "—"],
+                  ["Ended",    detailModal.consulting_ended_at
+                                ? new Date(detailModal.consulting_ended_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+                                : "—"],
+                  ["Duration", detailModal.duration_minutes != null
+                                ? `${detailModal.duration_minutes.toFixed(1)} min` : "—"],
+                ].map(([label, val]) => (
+                  <div key={label}>
+                    <div style={{ fontSize:11, color:"#94a3b8" }}>{label}</div>
+                    <div style={{ fontWeight:600, color:"#1e293b" }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={() => setDetailModal(null)}
+              style={{ ...S.ghostBtn, width:"100%", marginTop:16 }}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       <style>{`@keyframes spin { to { transform:rotate(360deg); } }`}</style>
     </div>
   );
@@ -633,7 +807,7 @@ const S = {
   sessionBlock:{ padding:"14px", background:"#f8fafc", borderRadius:10 },
   docCard:     { background:"#fff", borderRadius:14, padding:"20px 24px", boxShadow:"0 2px 12px rgba(0,0,0,0.06)", border:"1px solid #e2e8f0" },
   avatar:      { width:38, height:38, borderRadius:"50%", background:"linear-gradient(135deg,#0f4c75,#118a7e)", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, fontSize:16, flexShrink:0 },
-  statCard:    { background:"#fff", borderRadius:12, padding:"16px", textAlign:"center", boxShadow:"0 1px 8px rgba(0,0,0,0.05)" },
+  statCard:    { background:"#fff", borderRadius:12, padding:"14px", textAlign:"center", boxShadow:"0 1px 8px rgba(0,0,0,0.05)" },
   pill:        { padding:"4px 12px", borderRadius:20, fontSize:12, fontWeight:600 },
   table:       { width:"100%", borderCollapse:"collapse", fontSize:13, background:"#fff", borderRadius:10, overflow:"hidden" },
   th:          { padding:"10px 12px", textAlign:"left", fontSize:12, color:"#94a3b8", fontWeight:600, borderBottom:"1px solid #e2e8f0", whiteSpace:"nowrap" },
@@ -644,6 +818,9 @@ const S = {
   walkinBtn:   { background:"#0f4c75", color:"#fff", border:"none", borderRadius:8, padding:"7px 14px", fontSize:13, fontWeight:600, cursor:"pointer" },
   approveBtn:  { background:"#d1fae5", color:"#065f46", border:"none", borderRadius:6, padding:"5px 10px", fontSize:12, fontWeight:700, cursor:"pointer" },
   rejectBtn:   { background:"#fee2e2", color:"#991b1b", border:"none", borderRadius:6, padding:"5px 10px", fontSize:12, fontWeight:700, cursor:"pointer" },
+  confirmBtn:  { background:"#ede9fe", color:"#5b21b6", border:"none", borderRadius:6, padding:"5px 10px", fontSize:12, fontWeight:700, cursor:"pointer" },
+  resendBtn:   { background:"#f0f9ff", color:"#0369a1", border:"none", borderRadius:6, padding:"5px 8px",  fontSize:12, fontWeight:700, cursor:"pointer" },
+  detailBtn:   { background:"#f1f5f9", color:"#475569", border:"none", borderRadius:6, padding:"5px 10px", fontSize:12, fontWeight:600, cursor:"pointer" },
   overlay:     { position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:16 },
   modal:       { background:"#fff", borderRadius:16, padding:"28px", width:"100%", maxWidth:440, boxShadow:"0 20px 60px rgba(0,0,0,0.2)" },
   label:       { fontWeight:600, fontSize:13, color:"#374151", display:"block", marginBottom:6 },

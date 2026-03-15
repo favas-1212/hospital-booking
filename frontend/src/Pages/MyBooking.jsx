@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { getBookingHistory, cancelBooking } from "../services/allApi";
+import AppNavbar from "../components/AppNavbar";
 
 const STATUS_COLOR = {
   pending:    { bg:"#fef9c3", color:"#92400e", label:"Pending" },
@@ -59,7 +60,10 @@ function MyBookings() {
   );
 
   return (
+    <>
+    <AppNavbar/>
     <div style={S.page}>
+      
       <div style={{ width:"100%", maxWidth:900 }}>
         {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:32 }}>
@@ -153,6 +157,7 @@ function MyBookings() {
         )}
       </div>
     </div>
+    </>
   );
 }
 
@@ -167,6 +172,7 @@ const S = {
   badge:       { padding:"4px 10px", borderRadius:20, fontSize:11, fontWeight:700 },
   primaryBtn:  { background:"linear-gradient(90deg,#0f4c75,#118a7e)", color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:600, fontSize:14, cursor:"pointer" },
   dangerBtn:   { background:"#fef2f2", color:"#dc2626", border:"1px solid #fca5a5", borderRadius:10, padding:"8px 10px", fontWeight:600, fontSize:13, cursor:"pointer" },
+
 };
 
 export default MyBookings;

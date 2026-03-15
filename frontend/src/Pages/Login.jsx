@@ -55,7 +55,7 @@ function Login() {
   return (
     <div
       style={{
-        background: "linear-gradient(135deg, #E6FFFA, #F0FDFA)",
+        background: "linear-gradient(135deg, #E6FFFA, #f3f0fd)",
         minHeight: "100vh",
         display: "flex",
         alignItems: "center",

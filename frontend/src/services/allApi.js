@@ -95,16 +95,18 @@ export const rejectDoctor      = (id)  => commonApi(`/booking/staff/reject-docto
 // ═══════════════════════════════════════════════════════
 // STAFF — CONSULTATION HISTORY
 // ═══════════════════════════════════════════════════════
-export const getConsultationHistory = (date = "", doctorId = "") => {
-  const params = [
-    date     ? `date=${date}`           : "",
-    doctorId ? `doctor_id=${doctorId}`  : "",
-  ].filter(Boolean).join("&");
-  return commonApi(`/booking/staff/consultation-history/${params ? `?${params}` : ""}`, "GET");
-};
 
 // ═══════════════════════════════════════════════════════
 // PAYMENTS (Razorpay)
 // ═══════════════════════════════════════════════════════
 export const createPaymentOrder = (bookingId) => commonApi("/payments/create-order/", "POST", { booking_id: bookingId });
 export const verifyPayment      = (data)      => commonApi("/payments/verify/",       "POST", data);
+
+export const getConsultationHistory = (date = "", doctorId = "", type = "") => {
+  const params = [
+    date     ? `date=${date}`          : "",
+    doctorId ? `doctor_id=${doctorId}` : "",
+    type     ? `type=${type}`          : "",
+  ].filter(Boolean).join("&");
+  return commonApi(`/booking/staff/consultation-history/${params ? `?${params}` : ""}`, "GET");
+};
