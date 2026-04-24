@@ -1,0 +1,35 @@
+# Python
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.local
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+*.log
+
+# Node / Frontend
+node_modules/
+dist/
+build/
+
+# VS Code
+.vscode/
+
+# IDE
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Archives
+*.zip
