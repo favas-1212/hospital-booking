@@ -55,12 +55,18 @@ export const getQueueStatus = (doctorId, session, date) =>
 // ═══════════════════════════════════════════════════════
 // PATIENT — BOOKING
 // ═══════════════════════════════════════════════════════
+// [CHANGED] bookToken — payload MUST now include payment_id + payment_verified
+// after Razorpay/Stripe success callback. Backend rejects without them.
+//   payload: { doctor_id, session, booking_date, payment_id, payment_verified: true }
 export const bookToken             = (payload) => commonApi("/booking/patient/book/",           "POST",   payload);
 export const getBookingHistory     = ()        => commonApi("/booking/patient/history/",        "GET");
 export const cancelBooking         = (id)      => commonApi(`/booking/patient/cancel/${id}/`,   "DELETE");
 export const getPatientTokenStatus = ()        => commonApi("/booking/patient/token-status/",   "GET");
 export const confirmAttendance     = (id)      => commonApi(`/booking/patient/confirm/${id}/`,  "POST");
 export const rejectBooking         = (id)      => commonApi(`/booking/patient/reject/${id}/`,   "POST");
+
+// [NEW] Patient prescriptions list — newest first
+export const getMyPrescriptions    = ()        => commonApi("/booking/patient/prescriptions/",  "GET");
 
 // ═══════════════════════════════════════════════════════
 // DOCTOR
@@ -71,11 +77,27 @@ export const getDoctorDashboard = (date, session = "") =>
 export const startOPD = (data) =>
   commonApi("/booking/doctor/start-opd/", "POST", data);
 
-export const nextToken = (date, session = "") =>
-  commonApi(`/booking/doctor/next-token/?date=${date}${session ? `&session=${session}` : ""}`, "POST");
+// [CHANGED] nextToken now accepts an optional `force` flag.
+// When backend has the "needs prescription" check enabled, the doctor's
+// "Done & Next" flow saves the Rx first; force=true bypasses (e.g. patient walked out).
+export const nextToken = (date, session = "", force = false) =>
+  commonApi(
+    `/booking/doctor/next-token/?date=${date}${session ? `&session=${session}` : ""}`,
+    "POST",
+    { force }
+  );
 
 export const skipToken = (id)   => commonApi(`/booking/doctor/skip/${id}/`, "POST");
 export const endOPD    = (data) => commonApi("/booking/doctor/end-opd/",    "POST", data);
+
+// [NEW] Doctor prescription endpoints
+// GET  → load existing diagnosis/medicines for a booking (for editing)
+// POST → save (create/update) diagnosis + medicines
+export const getPrescription  = (bookingId)         =>
+  commonApi(`/booking/doctor/prescription/${bookingId}/`, "GET");
+
+export const savePrescription = (bookingId, payload) =>
+  commonApi(`/booking/doctor/prescription/${bookingId}/save/`, "POST", payload);
 
 // ═══════════════════════════════════════════════════════
 // STAFF — OPD MANAGEMENT
@@ -113,7 +135,7 @@ export const getConsultationHistory = (date = "", doctorId = "", type = "") => {
 };
 
 // ═══════════════════════════════════════════════════════
-// [NEW] STAFF — DOCTOR LEAVE MANAGEMENT
+// STAFF — DOCTOR LEAVE MANAGEMENT
 // ═══════════════════════════════════════════════════════
 // applyDoctorLeave  body: { doctor_id, date: "YYYY-MM-DD", session: "morning"|"evening"|"all", reason?: string }
 // cancelDoctorLeave body: { doctor_id, date: "YYYY-MM-DD", session: "morning"|"evening"|"all" }

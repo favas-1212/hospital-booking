@@ -9,8 +9,9 @@ Features:
   - 2-tokens-ahead email + in-app notification
   - OPD pause / resume by doctor (blocks next_token while paused)
   - Late-confirmed patient status with queue position & wait estimate
-  - [NEW] Wait time returned as hours + minutes (e.g. "1h 30m")
-  - [NEW] Doctor LEAVE feature — managed by OPD STAFF, freezes bookings
+  - Wait time returned as hours + minutes (e.g. "1h 30m")
+  - Doctor LEAVE feature — managed by OPD STAFF, freezes bookings
+  - Doctor PRESCRIPTION — save diagnosis + medicines per consultation
 """
 
 from rest_framework.decorators import api_view, permission_classes
@@ -30,6 +31,7 @@ from .models import (
     BookingStatus, PaymentStatus,
     ONLINE_RANGE, WALKIN_RANGE,
     MAX_TOKENS_PER_SESSION, ONLINE_TOKEN_START, ONLINE_TOKEN_END,
+    Prescription,                           # [NEW]
 )
 try:
     from .models import DoctorLeave
@@ -40,6 +42,7 @@ from .serializers import (
     DistrictSerializer, HospitalSerializer, DepartmentSerializer,
     DoctorListSerializer, BookingSerializer, WalkinBookingSerializer,
     BookingDetailSerializer, BookingHistorySerializer, PatientTokenStatusSerializer,
+    PrescriptionSerializer,                 # [NEW]
     ONLINE_BOOKING_CUTOFF,
 )
 from .utils import (
@@ -48,7 +51,7 @@ from .utils import (
     compute_queue_position,
     get_doctor_or_403,
     get_patient_or_403,
-    get_opdstaff_or_403,   # [NEW] staff auth helper — added in booking/utils.py
+    get_opdstaff_or_403,
 )
 from accounts.models import Patient, Doctor
 
@@ -72,12 +75,7 @@ SESSION_START_TIMES = {
 }
 
 
-# ── [NEW] Staff permission check ─────────────────────────────────────────────
-# Delegates to booking.utils.get_opdstaff_or_403 — the same helper pattern used
-# for doctor / patient auth. Kept as _ensure_staff so the leave endpoints'
-# call sites read naturally:
-#     ok, err = _ensure_staff(request.user)
-#     if not ok: return err
+# ── Staff permission check ────────────────────────────────────────────────────
 
 def _ensure_staff(user):
     staff, err = get_opdstaff_or_403(user)
@@ -86,7 +84,7 @@ def _ensure_staff(user):
     return True, None
 
 
-# ── Hours + minutes formatter ────────────────────────────────────────────────
+# ── Hours + minutes formatter ─────────────────────────────────────────────────
 
 def format_wait_time(total_minutes):
     """90 → {'hours':1,'minutes':30,'total_minutes':90,'display':'1h 30m'}"""
@@ -112,7 +110,7 @@ def format_wait_time(total_minutes):
     return {"hours": hours, "minutes": minutes, "total_minutes": total, "display": display}
 
 
-# ── Doctor-leave lookup helper ───────────────────────────────────────────────
+# ── Doctor-leave lookup helper ────────────────────────────────────────────────
 
 def _is_doctor_on_leave(doctor, booking_date, session):
     """Returns (on_leave: bool, reason: str|None)."""
@@ -126,7 +124,7 @@ def _is_doctor_on_leave(doctor, booking_date, session):
     return False, None
 
 
-# ── Shared queue-builder ─────────────────────────────────────────────────────
+# ── Shared queue-builder ──────────────────────────────────────────────────────
 
 def _build_ordered_queue(all_qs, opd_day, current_token_num=0):
     late_cutoff   = opd_day.started_at + timedelta(minutes=10)
@@ -280,7 +278,6 @@ def fetch_tokens(request):
     except Doctor.DoesNotExist:
         return Response({"error": "Doctor not found or not approved."}, status=404)
 
-    # [NEW] Block fetch if doctor is on leave for this date/session
     on_leave, leave_reason = _is_doctor_on_leave(doctor, booking_date, session)
     if on_leave:
         return Response({
@@ -292,7 +289,7 @@ def fetch_tokens(request):
             "session"      : session,
         }, status=400)
 
-    is_today = booking_date == now().date()
+    is_today     = booking_date == now().date()
     booking_open = localtime().time() < ONLINE_BOOKING_CUTOFF.get(session, dt_time(23, 59)) if is_today else True
 
     bookings         = Booking.objects.filter(doctor=doctor, session=session, booking_date=booking_date)
@@ -341,7 +338,6 @@ def book_token(request):
         d = get_allowed_booking_dates()
         return Response({"error": f"Only today ({d['today']}), tomorrow ({d['tomorrow']}), or day after tomorrow ({d['day_after_tomorrow']}) are allowed."}, status=400)
 
-    # [NEW] Block booking if doctor is on leave
     doctor_id = request.data.get("doctor_id") or request.data.get("doctor")
     session   = request.data.get("session")
     if doctor_id and session:
@@ -435,7 +431,7 @@ def patient_token_status(request):
     data["doctor_on_leave"] = on_leave
     data["leave_reason"]    = leave_reason
 
-    confirmed_type = _resolve_confirmed_type(booking, opd_day)
+    confirmed_type         = _resolve_confirmed_type(booking, opd_day)
     data["confirmed_type"] = confirmed_type
 
     data["late_queue_position"]     = None
@@ -451,15 +447,15 @@ def patient_token_status(request):
         ).first()
         current_token_num = current.token_number if current else 0
 
-        all_qs      = Booking.objects.filter(doctor=booking.doctor, booking_date=today, session=booking.session)
-        ordered_q   = _build_ordered_queue(all_qs, opd_day, current_token_num)
-        token_ids   = [b.pk for b in ordered_q]
+        all_qs    = Booking.objects.filter(doctor=booking.doctor, booking_date=today, session=booking.session)
+        ordered_q = _build_ordered_queue(all_qs, opd_day, current_token_num)
+        token_ids = [b.pk for b in ordered_q]
 
         try:
-            position        = token_ids.index(booking.pk) + 1
-            tokens_ahead    = position - 1
-            avg_min         = getattr(opd_day, "avg_consult_minutes", None) or 7
-            estimated_wait  = tokens_ahead * avg_min
+            position       = token_ids.index(booking.pk) + 1
+            tokens_ahead   = position - 1
+            avg_min        = getattr(opd_day, "avg_consult_minutes", None) or 7
+            estimated_wait = tokens_ahead * avg_min
         except ValueError:
             position = tokens_ahead = estimated_wait = None
 
@@ -528,7 +524,7 @@ def patient_confirm_attendance(request, booking_id):
             "confirmed_type": "pre_confirmed",
         })
 
-    # Scenario 2 & 3
+    # Scenario 2 & 3: OPD active
     try:
         opd_day = OPDDay.objects.get(doctor=booking.doctor, date=booking.booking_date, session=booking.session)
     except OPDDay.DoesNotExist:
@@ -585,6 +581,25 @@ def patient_reject_booking(request, booking_id):
     return Response({"message": "Booking rejected and removed."})
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def patient_prescriptions(request):
+    """
+    Returns all prescriptions for the logged-in patient, newest first.
+    """
+    patient, err = get_patient_or_403(request.user)
+    if err:
+        return err
+
+    prescriptions = (
+        Prescription.objects
+        .filter(booking__patient=patient)
+        .select_related("booking__doctor__hospital", "booking__doctor__department")
+        .order_by("-created_at")
+    )
+    return Response(PrescriptionSerializer(prescriptions, many=True).data)
+
+
 # ═══════════════════════════════════════════════════════
 # 3. DOCTOR APIs
 # ═══════════════════════════════════════════════════════
@@ -624,18 +639,19 @@ def doctor_dashboard(request):
     current = qs.filter(status=BookingStatus.CONSULTING).first()
 
     tokens = [{
-        "id"                  : b.id,
-        "token"               : b.token_number,
-        "patient_name"        : b.display_name,
-        "patient_type"        : "walkin" if b.is_walkin else "online",
-        "session"             : b.session,
-        "status"              : b.status,
-        "is_confirmed"        : b.is_confirmed,
-        "confirmation_time"   : b.confirmation_time,
-        "queue_insert_time"   : b.queue_insert_time,
+        "id"                   : b.id,
+        "token"                : b.token_number,
+        "patient_name"         : b.display_name,
+        "patient_type"         : "walkin" if b.is_walkin else "online",
+        "session"              : b.session,
+        "status"               : b.status,
+        "is_confirmed"         : b.is_confirmed,
+        "confirmation_time"    : b.confirmation_time,
+        "queue_insert_time"    : b.queue_insert_time,
         "consulting_started_at": b.consulting_started_at,
-        "confirmed_type"      : _resolve_confirmed_type(b, opd_days.get(b.session)),
-        "two_ahead_notified"  : getattr(b, "two_ahead_notified", False),
+        "confirmed_type"       : _resolve_confirmed_type(b, opd_days.get(b.session)),
+        "two_ahead_notified"   : getattr(b, "two_ahead_notified", False),
+        "has_prescription"     : Prescription.objects.filter(booking=b).exists(),  # [NEW]
     } for b in qs]
 
     avg_min = any_day.avg_consult_minutes if any_day else 7
@@ -693,6 +709,19 @@ def doctor_next_token(request):
 
     current = all_qs.filter(status=BookingStatus.CONSULTING).first()
     if current:
+        # [NEW] Block "Next Token" if no prescription saved.
+        # Pass force=true in body to bypass (e.g. patient walked out).
+        force  = str(request.data.get("force", "")).lower() in ("1", "true", "yes")
+        has_rx = Prescription.objects.filter(booking=current).exists()
+        if not has_rx and not force:
+            return Response({
+                "error"              : "Please add diagnosis & prescription before calling the next patient.",
+                "needs_prescription" : True,
+                "current_booking_id" : current.id,
+                "current_token"      : current.token_number,
+                "current_patient"    : current.display_name,
+            }, status=400)
+
         current.status              = BookingStatus.DONE
         current.consulting_ended_at = now()
         current.save()
@@ -739,7 +768,7 @@ def doctor_next_token(request):
     })
 
 
-# ── pause / resume / start / end / skip (mostly unchanged) ───────────────────
+# ── pause / resume ────────────────────────────────────────────────────────────
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -748,16 +777,11 @@ def pause_opd(request):
     date_str  = request.data.get("date", str(now().date()))
     session   = request.data.get("session")
     reason    = (request.data.get("reason") or "").strip() or None
-    doctor_id = request.data.get("doctor_id")   # [NEW] staff can pass this
+    doctor_id = request.data.get("doctor_id")
 
     if not session or session not in ["morning", "evening"]:
         return Response({"error": "session must be 'morning' or 'evening'."}, status=400)
 
-    # [FIX] Allow either:
-    #   • OPD staff acting on behalf of a specific doctor (doctor_id in body)
-    #   • The doctor themselves (no doctor_id → look up by request.user)
-    # Previously this only worked for doctors, so the staff dashboard's Pause
-    # button always got 403.
     if doctor_id:
         ok, staff_err = _ensure_staff(request.user)
         if not ok:
@@ -798,12 +822,11 @@ def pause_opd(request):
 def resume_opd(request):
     date_str  = request.data.get("date", str(now().date()))
     session   = request.data.get("session")
-    doctor_id = request.data.get("doctor_id")   # [NEW] staff can pass this
+    doctor_id = request.data.get("doctor_id")
 
     if not session or session not in ["morning", "evening"]:
         return Response({"error": "session must be 'morning' or 'evening'."}, status=400)
 
-    # [FIX] Same dual-auth pattern as pause_opd — doctor OR staff with doctor_id.
     if doctor_id:
         ok, staff_err = _ensure_staff(request.user)
         if not ok:
@@ -838,7 +861,99 @@ def resume_opd(request):
 
 
 # ═══════════════════════════════════════════════════════
-# [NEW] OPD STAFF — DOCTOR LEAVE MANAGEMENT
+# DOCTOR — PRESCRIPTION MANAGEMENT
+# ═══════════════════════════════════════════════════════
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def doctor_save_prescription(request, booking_id):
+    """
+    Doctor saves diagnosis + prescription for a booking.
+    Called from the diagnosis modal in DoctorDashboard, typically right before
+    pressing "Done" / "Next Token".
+
+    Body:
+    {
+      "diagnosis" : "Acute viral fever",
+      "medicines" : "1. Paracetamol 500mg - 1-1-1 x 5 days\n2. ORS sachets - prn"
+    }
+
+    Creates or updates the Prescription row (one-to-one with Booking).
+    Does NOT change booking status — the doctor still has to press Next Token
+    to mark the consultation as DONE.
+    """
+    doctor, err = get_doctor_or_403(request.user)
+    if err:
+        return err
+
+    try:
+        booking = Booking.objects.select_related("patient__user").get(
+            id=booking_id, doctor=doctor
+        )
+    except Booking.DoesNotExist:
+        return Response({"error": "Booking not found."}, status=404)
+
+    if booking.status not in [BookingStatus.CONSULTING, BookingStatus.DONE]:
+        return Response({
+            "error": (
+                f"Cannot add prescription for a booking with status "
+                f"'{booking.status}'. Patient must be consulting or done."
+            )
+        }, status=400)
+
+    diagnosis = (request.data.get("diagnosis") or "").strip()
+    medicines = (request.data.get("medicines") or "").strip()
+
+    if not diagnosis and not medicines:
+        return Response(
+            {"error": "Please provide at least a diagnosis or prescription."},
+            status=400,
+        )
+
+    rx, _created = Prescription.objects.update_or_create(
+        booking=booking,
+        defaults={"diagnosis": diagnosis, "medicines": medicines},
+    )
+
+    return Response({
+        "message"      : "Prescription saved successfully.",
+        "booking_id"   : booking.id,
+        "token_number" : booking.token_number,
+        "patient_name" : booking.display_name,
+        "prescription" : PrescriptionSerializer(rx).data,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def doctor_get_prescription(request, booking_id):
+    """
+    Doctor fetches the prescription for a booking (for editing in the modal).
+    Returns 200 with empty fields if no prescription exists yet.
+    """
+    doctor, err = get_doctor_or_403(request.user)
+    if err:
+        return err
+
+    try:
+        booking = Booking.objects.get(id=booking_id, doctor=doctor)
+    except Booking.DoesNotExist:
+        return Response({"error": "Booking not found."}, status=404)
+
+    rx = Prescription.objects.filter(booking=booking).first()
+    return Response({
+        "booking_id"  : booking.id,
+        "token_number": booking.token_number,
+        "patient_name": booking.display_name,
+        "diagnosis"   : rx.diagnosis if rx else "",
+        "medicines"   : rx.medicines if rx else "",
+        "exists"      : bool(rx),
+    })
+
+
+# ═══════════════════════════════════════════════════════
+# OPD STAFF — DOCTOR LEAVE MANAGEMENT
 # ═══════════════════════════════════════════════════════
 
 @api_view(["POST"])
@@ -850,9 +965,9 @@ def staff_apply_leave(request):
 
     Body:
     {
-      "doctor_id": <int>,                              # REQUIRED
-      "date"     : "YYYY-MM-DD",                       # REQUIRED
-      "session"  : "morning" | "evening" | "all",      # 'all' = full-day
+      "doctor_id": <int>,
+      "date"     : "YYYY-MM-DD",
+      "session"  : "morning" | "evening" | "all",
       "reason"   : "optional text"
     }
 
@@ -894,7 +1009,6 @@ def staff_apply_leave(request):
     except Doctor.DoesNotExist:
         return Response({"error": "Doctor not found or not approved."}, status=404)
 
-    # If an OPD session is already active for this slot, require ending it first.
     active_opd_qs = OPDDay.objects.filter(doctor=doctor, date=leave_date, is_active=True)
     if session != "all":
         active_opd_qs = active_opd_qs.filter(session=session)
@@ -907,13 +1021,11 @@ def staff_apply_leave(request):
             )
         }, status=400)
 
-    # Prevent duplicate active leave for same (doctor, date, session)
     if DoctorLeave.objects.filter(
         doctor=doctor, date=leave_date, session=session, is_active=True
     ).exists():
         return Response({"error": "Leave is already active for this slot."}, status=400)
 
-    # Full-day overrides any per-session leaves that day
     if session == "all":
         DoctorLeave.objects.filter(
             doctor=doctor, date=leave_date, is_active=True
@@ -924,7 +1036,6 @@ def staff_apply_leave(request):
         reason=reason, is_active=True, applied_by=request.user,
     )
 
-    # Cancel affected bookings
     sessions_to_clear = ["morning", "evening"] if session == "all" else [session]
     affected = Booking.objects.filter(
         doctor=doctor,
@@ -1053,19 +1164,21 @@ def staff_list_leaves(request):
     qs = qs.order_by("date", "session")
 
     return Response([{
-        "id"          : l.id,
-        "doctor_id"   : l.doctor_id,
-        "doctor_name" : l.doctor.full_name,
-        "hospital"    : l.doctor.hospital.name    if l.doctor.hospital    else "—",
-        "department"  : l.doctor.department.name  if l.doctor.department  else "—",
-        "date"        : l.date,
-        "session"     : l.session,
-        "reason"      : l.reason,
-        "applied_by"  : l.applied_by.username if l.applied_by else None,
-        "created_at"  : l.created_at,
+        "id"         : l.id,
+        "doctor_id"  : l.doctor_id,
+        "doctor_name": l.doctor.full_name,
+        "hospital"   : l.doctor.hospital.name   if l.doctor.hospital   else "—",
+        "department" : l.doctor.department.name if l.doctor.department else "—",
+        "date"       : l.date,
+        "session"    : l.session,
+        "reason"     : l.reason,
+        "applied_by" : l.applied_by.username if l.applied_by else None,
+        "created_at" : l.created_at,
     } for l in qs])
 
 
+# ═══════════════════════════════════════════════════════
+# OPD LIFECYCLE
 # ═══════════════════════════════════════════════════════
 
 @api_view(["POST"])
@@ -1092,7 +1205,6 @@ def start_opd(request):
         if err:
             return err
 
-    # [NEW] Refuse to start OPD while a leave is active
     on_leave, leave_reason = _is_doctor_on_leave(doctor, booking_date, session)
     if on_leave:
         return Response({
@@ -1215,7 +1327,6 @@ def end_opd(request):
 @permission_classes([IsAuthenticated])
 @transaction.atomic
 def book_walkin_token(request):
-    # [NEW] Block walk-in booking when doctor is on leave
     doctor_id    = request.data.get("doctor_id") or request.data.get("doctor")
     session      = request.data.get("session")
     booking_date = parse_date(str(request.data.get("booking_date") or request.data.get("date") or now().date()))
@@ -1237,7 +1348,14 @@ def book_walkin_token(request):
     if not serializer.is_valid():
         return Response(serializer.errors, status=400)
     booking = serializer.save()
-    return Response({"message": f"Walk-in token #{booking.token_number} booked successfully.", "token_number": booking.token_number, "patient_name": booking.walkin_name, "id": booking.id, "session": booking.session, "date": booking.booking_date}, status=status.HTTP_201_CREATED)
+    return Response({
+        "message"     : f"Walk-in token #{booking.token_number} booked successfully.",
+        "token_number": booking.token_number,
+        "patient_name": booking.walkin_name,
+        "id"          : booking.id,
+        "session"     : booking.session,
+        "date"        : booking.booking_date,
+    }, status=status.HTTP_201_CREATED)
 
 
 @api_view(["GET"])
@@ -1269,8 +1387,8 @@ def opd_dashboard(request):
                 "started_at"  : od.started_at if od else None,
                 "is_paused"   : getattr(od, "is_paused",    False) if od else False,
                 "pause_reason": getattr(od, "pause_reason", None)  if od else None,
-                "on_leave"    : on_leave,                 # [NEW]
-                "leave_reason": leave_reason,             # [NEW]
+                "on_leave"    : on_leave,
+                "leave_reason": leave_reason,
             }
 
         bookings = Booking.objects.filter(doctor=doctor, booking_date=booking_date).order_by("token_number")
@@ -1406,8 +1524,8 @@ def consultation_history(request):
             "session": b.session, "booking_date": b.booking_date,
             "consulting_started_at": b.consulting_started_at,
             "consulting_ended_at"  : b.consulting_ended_at,
-            "duration_minutes"     : duration_min,                     # legacy
-            "duration"             : format_wait_time(duration_min),   # [NEW] h + m
+            "duration_minutes"     : duration_min,
+            "duration"             : format_wait_time(duration_min),
             "payment_status"       : b.payment_status,
         })
     return Response(data)
@@ -1435,10 +1553,10 @@ def queue_status(request):
         opd_day = OPDDay.objects.get(doctor=doctor, date=booking_date, session=session)
     except OPDDay.DoesNotExist:
         return Response({
-            "opd_active"  : False,
-            "opd_paused"  : False,
-            "on_leave"    : on_leave,
-            "leave_reason": leave_reason,
+            "opd_active"   : False,
+            "opd_paused"   : False,
+            "on_leave"     : on_leave,
+            "leave_reason" : leave_reason,
             "current_token": None,
             "queue_length" : 0,
         })
@@ -1475,7 +1593,12 @@ def queue_status(request):
 # ═══════════════════════════════════════════════════════
 
 def _update_avg_consult_time(doctor, booking_date, session):
-    done = list(Booking.objects.filter(doctor=doctor, booking_date=booking_date, session=session, status=BookingStatus.DONE, consulting_started_at__isnull=False, consulting_ended_at__isnull=False).order_by("consulting_ended_at"))
+    done = list(Booking.objects.filter(
+        doctor=doctor, booking_date=booking_date, session=session,
+        status=BookingStatus.DONE,
+        consulting_started_at__isnull=False,
+        consulting_ended_at__isnull=False,
+    ).order_by("consulting_ended_at"))
     durations = [b.consulting_duration_minutes for b in done if b.consulting_duration_minutes and b.consulting_duration_minutes > 0]
     n = len(durations)
     if n == 0:
@@ -1485,8 +1608,9 @@ def _update_avg_consult_time(doctor, booking_date, session):
     elif n == 2:
         avg = sum(durations) / 2
     else:
-        recent = durations[-3:]; older = durations[:-3]
-        avg = (sum(recent) / len(recent) * 0.7) + (sum(older) / len(older) * 0.3 if older else 0)
+        recent = durations[-3:]
+        older  = durations[:-3]
+        avg    = (sum(recent) / len(recent) * 0.7) + (sum(older) / len(older) * 0.3 if older else 0)
     OPDDay.objects.filter(doctor=doctor, date=booking_date, session=session).update(avg_consult_minutes=max(1, round(avg)))
 
 
@@ -1544,4 +1668,9 @@ def staff_confirm_attendance(request, booking_id):
     booking.queue_insert_time = now()
     booking.status            = BookingStatus.WAITING
     booking.save()
-    return Response({"message": f"Token #{booking.token_number} confirmed.", "token_number": booking.token_number, "patient_name": booking.display_name, "patient_type": "walkin" if booking.is_walkin else "online"})
+    return Response({
+        "message"      : f"Token #{booking.token_number} confirmed.",
+        "token_number" : booking.token_number,
+        "patient_name" : booking.display_name,
+        "patient_type" : "walkin" if booking.is_walkin else "online",
+    })

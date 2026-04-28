@@ -17,6 +17,11 @@ from .models import (
 )
 from accounts.models import Patient, Doctor
 
+try:
+    from .models import Prescription
+except ImportError:
+    Prescription = None
+
 
 # ─────────────────────────────────────────────
 # CONSTANTS
@@ -51,7 +56,7 @@ def _session_cutoff_passed(session: str) -> bool:
 
 
 # ─────────────────────────────────────────────
-# [NEW] HOURS + MINUTES FORMATTER
+# HOURS + MINUTES FORMATTER
 # ─────────────────────────────────────────────
 
 def format_wait_time(total_minutes):
@@ -77,10 +82,6 @@ def format_wait_time(total_minutes):
     return {"hours": hours, "minutes": minutes, "total_minutes": total, "display": display}
 
 
-# ─────────────────────────────────────────────
-# Leave-check helper (safe — no-op if migration not applied)
-# ─────────────────────────────────────────────
-
 def _doctor_on_leave(doctor, booking_date, session):
     try:
         from .models import DoctorLeave
@@ -89,6 +90,15 @@ def _doctor_on_leave(doctor, booking_date, session):
     return DoctorLeave.objects.filter(
         doctor=doctor, date=booking_date, is_active=True,
     ).filter(Q(session=session) | Q(session="all")).exists()
+
+
+def _get_prescription_for(booking):
+    if Prescription is None:
+        return None
+    try:
+        return Prescription.objects.filter(booking=booking).first()
+    except Exception:
+        return None
 
 
 # ─────────────────────────────────────────────
@@ -117,11 +127,11 @@ def _compute_rolling_avg(doctor, booking_date, session=None, current_booking=Non
     count = len(durations)
 
     if count == 0:
-        try:
-            opd_day = OPDDay.objects.get(doctor=doctor, date=booking_date)
-            return float(opd_day.avg_consult_minutes or 7)
-        except OPDDay.DoesNotExist:
-            return 7.0
+        opd_qs = OPDDay.objects.filter(doctor=doctor, date=booking_date)
+        if session:
+            opd_qs = opd_qs.filter(session=session)
+        opd_day = opd_qs.first()
+        return float(opd_day.avg_consult_minutes or 7) if opd_day else 7.0
 
     if count == 1:
         weighted = durations[0]
@@ -228,7 +238,6 @@ class BookingSerializer(serializers.ModelSerializer):
         if booking_date > today + timedelta(days=7):
             raise serializers.ValidationError("Booking allowed only within the next 7 days.")
 
-        # [NEW] Doctor leave check
         if _doctor_on_leave(doctor, booking_date, session):
             raise serializers.ValidationError(
                 f"Dr. {doctor.full_name} is on leave for the {session} session "
@@ -253,21 +262,29 @@ class BookingSerializer(serializers.ModelSerializer):
         except Patient.DoesNotExist:
             raise serializers.ValidationError("Only patient accounts can book tokens.")
 
-        if Booking.objects.filter(
+        existing = Booking.objects.filter(
             patient=patient,
             booking_date=booking_date,
             doctor=doctor,
             session=session,
-        ).exists():
+        ).first()
+        if existing and existing.payment_status == PaymentStatus.PAID:
             raise serializers.ValidationError(
-                "You already have a booking with this doctor for this session today."
+                "You already have a paid booking with this doctor for this session."
             )
+        if existing and existing.payment_status != PaymentStatus.PAID:
+            data["_existing_unpaid"] = existing
 
         data["_patient"] = patient
         return data
 
     @transaction.atomic
     def create(self, validated_data):
+        existing_unpaid = validated_data.pop("_existing_unpaid", None)
+        if existing_unpaid:
+            validated_data.pop("_patient", None)
+            return existing_unpaid
+
         doctor       = validated_data["doctor"]
         session      = validated_data["session"]
         booking_date = validated_data["booking_date"]
@@ -333,7 +350,6 @@ class WalkinBookingSerializer(serializers.Serializer):
         booking_date = data["booking_date"]
         today        = now().date()
 
-        # [NEW] Leave check
         if _doctor_on_leave(doctor, booking_date, session):
             raise serializers.ValidationError(
                 f"Dr. {doctor.full_name} is on leave for the {session} session "
@@ -395,7 +411,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     is_online                   = serializers.BooleanField(read_only=True)
     is_walkin                   = serializers.BooleanField(read_only=True)
     consulting_duration_minutes = serializers.FloatField(read_only=True)
-    consulting_duration         = serializers.SerializerMethodField()   # [NEW]
+    consulting_duration         = serializers.SerializerMethodField()
 
     class Meta:
         model  = Booking
@@ -431,6 +447,7 @@ class BookingHistorySerializer(serializers.ModelSerializer):
     department      = serializers.CharField(source="doctor.department.name", read_only=True)
     doctor_name     = serializers.SerializerMethodField()
     session_display = serializers.CharField(source="get_session_display",    read_only=True)
+    prescription    = serializers.SerializerMethodField()
 
     class Meta:
         model  = Booking
@@ -439,10 +456,21 @@ class BookingHistorySerializer(serializers.ModelSerializer):
             "session", "session_display", "booking_date",
             "token_number", "payment_status", "status",
             "is_confirmed", "created_at",
+            "prescription",
         ]
 
     def get_doctor_name(self, obj):
         return getattr(obj.doctor, "full_name", None) or obj.doctor.user.username
+
+    def get_prescription(self, obj):
+        rx = _get_prescription_for(obj)
+        if not rx:
+            return None
+        return {
+            "diagnosis" : rx.diagnosis,
+            "medicines" : rx.medicines,
+            "created_at": rx.created_at,
+        }
 
 
 # ─────────────────────────────────────────────
@@ -450,15 +478,17 @@ class BookingHistorySerializer(serializers.ModelSerializer):
 # ─────────────────────────────────────────────
 
 class PatientTokenStatusSerializer(serializers.ModelSerializer):
-    tokens_ahead           = serializers.SerializerMethodField()
-    estimated_wait_minutes = serializers.SerializerMethodField()
-    estimated_wait         = serializers.SerializerMethodField()   # [NEW]
-    avg_consult_time       = serializers.SerializerMethodField()   # [NEW]
-    current_token          = serializers.SerializerMethodField()
-    avg_consult_minutes    = serializers.SerializerMethodField()
-    doctor_name            = serializers.SerializerMethodField()
-    hospital               = serializers.CharField(source="doctor.hospital.name",   read_only=True)
-    department             = serializers.CharField(source="doctor.department.name", read_only=True)
+    tokens_ahead             = serializers.SerializerMethodField()
+    estimated_wait_minutes   = serializers.SerializerMethodField()
+    estimated_wait           = serializers.SerializerMethodField()
+    avg_consult_time         = serializers.SerializerMethodField()
+    current_token            = serializers.SerializerMethodField()
+    avg_consult_minutes      = serializers.SerializerMethodField()
+    doctor_name              = serializers.SerializerMethodField()
+    hospital                 = serializers.CharField(source="doctor.hospital.name",   read_only=True)
+    department               = serializers.CharField(source="doctor.department.name", read_only=True)
+    confirmation_window_open = serializers.SerializerMethodField()
+    prescription             = serializers.SerializerMethodField()
 
     class Meta:
         model  = Booking
@@ -472,13 +502,18 @@ class PatientTokenStatusSerializer(serializers.ModelSerializer):
             "avg_consult_time",
             "consulting_started_at",
             "doctor_name", "hospital", "department",
+            "confirmation_window_open",
+            "prescription",
         ]
 
+    # ── Cache helpers ───────────────────────────────────────────────────────
     def _get_opd_day(self, obj):
         if not hasattr(self, "_opd_day_cache"):
             try:
                 self._opd_day_cache = OPDDay.objects.get(
-                    doctor=obj.doctor, date=obj.booking_date
+                    doctor=obj.doctor,
+                    date=obj.booking_date,
+                    session=obj.session,
                 )
             except OPDDay.DoesNotExist:
                 self._opd_day_cache = None
@@ -495,6 +530,7 @@ class PatientTokenStatusSerializer(serializers.ModelSerializer):
             ).first()
         return self._current_consulting_cache
 
+    # ── Field methods ───────────────────────────────────────────────────────
     def get_doctor_name(self, obj):
         return getattr(obj.doctor, "full_name", None) or obj.doctor.user.username
 
@@ -503,35 +539,68 @@ class PatientTokenStatusSerializer(serializers.ModelSerializer):
         return current.token_number if current else 0
 
     def get_tokens_ahead(self, obj):
+        """
+        Returns the number of patients who will be called BEFORE this one,
+        using the EXACT same ordering the doctor's "Next Token" uses
+        (`_build_ordered_queue` in views.py). This guarantees the patient sees
+        the position they'll actually be called from — including grace-position
+        +5 placement for late-confirmed online patients.
+        """
         if not obj.is_confirmed:
             return None
 
-        if not obj.queue_insert_time:
+        if obj.status == BookingStatus.CONSULTING:
+            return 0
+
+        opd_day = self._get_opd_day(obj)
+
+        # Pre-OPD or OPD inactive — no live queue yet, just count confirmed
+        # bookings that came before this one.
+        if opd_day is None or not opd_day.is_active or not opd_day.started_at:
+            qs = Booking.objects.filter(
+                doctor=obj.doctor,
+                booking_date=obj.booking_date,
+                session=obj.session,
+                status__in=[BookingStatus.WAITING, BookingStatus.CONSULTING],
+                is_confirmed=True,
+            ).exclude(pk=obj.pk)
+            if obj.queue_insert_time:
+                qs = qs.filter(
+                    Q(queue_insert_time__lt=obj.queue_insert_time) |
+                    Q(queue_insert_time=obj.queue_insert_time, token_number__lt=obj.token_number)
+                )
+            return qs.count()
+
+        # OPD active — defer to the actual queue builder for accuracy.
+        # Lazy import to avoid circular import.
+        from .views import _build_ordered_queue
+
+        all_qs  = Booking.objects.filter(
+            doctor=obj.doctor,
+            booking_date=obj.booking_date,
+            session=obj.session,
+        )
+        current = all_qs.filter(status=BookingStatus.CONSULTING).first()
+        current_token_num = current.token_number if current else 0
+
+        ordered     = _build_ordered_queue(all_qs, opd_day, current_token_num)
+        ordered_ids = [b.pk for b in ordered]
+
+        # Currently-consulting patient counts as "ahead" of every queued patient
+        consulting_count = 1 if current else 0
+
+        try:
+            position_in_queue = ordered_ids.index(obj.pk)   # 0-based
+            return consulting_count + position_in_queue
+        except ValueError:
+            # Not in the ordered queue (e.g. unconfirmed online).
             return Booking.objects.filter(
                 doctor=obj.doctor,
                 booking_date=obj.booking_date,
                 session=obj.session,
                 status__in=[BookingStatus.WAITING, BookingStatus.CONSULTING],
                 is_confirmed=True,
-            ).count()
-
-        # [FIX] When OPD starts, all pre-confirmed patients are bulk-updated with the
-        # SAME queue_insert_time. A pure __lt comparison returns 0 for ALL of them,
-        # making every pre-confirmed patient look like they're next in line.
-        #
-        # Correct ordering tiebreaker: patients with an earlier queue_insert_time
-        # are ahead, AND among patients with the same queue_insert_time, lower
-        # token_number is ahead. This matches the order doctor_next_token() calls them.
-        return Booking.objects.filter(
-            doctor=obj.doctor,
-            booking_date=obj.booking_date,
-            session=obj.session,
-            status__in=[BookingStatus.WAITING, BookingStatus.CONSULTING],
-            is_confirmed=True,
-        ).filter(
-            Q(queue_insert_time__lt=obj.queue_insert_time) |
-            Q(queue_insert_time=obj.queue_insert_time, token_number__lt=obj.token_number)
-        ).count()
+            ).exclude(pk=obj.pk).count()
 
     def get_avg_consult_minutes(self, obj):
         opd_day = self._get_opd_day(obj)
@@ -564,8 +633,65 @@ class PatientTokenStatusSerializer(serializers.ModelSerializer):
             elapsed = (now() - current.consulting_started_at).total_seconds() / 60
             remaining_for_current = max(0, avg - elapsed)
 
-        total = (ahead * avg) + remaining_for_current
+        # `ahead` includes the consulting patient. We don't want to double-count
+        # them (full avg + remaining) — subtract one full consultation if a
+        # current consultation is ongoing, then add the actual remaining time.
+        if current:
+            total = ((ahead - 1) * avg) + remaining_for_current
+        else:
+            total = ahead * avg
         return round(max(0, total), 1)
 
     def get_estimated_wait(self, obj):
         return format_wait_time(self.get_estimated_wait_minutes(obj))
+
+    def get_confirmation_window_open(self, obj):
+        if obj.is_confirmed:
+            return False
+        if obj.status not in [BookingStatus.PENDING, BookingStatus.WAITING]:
+            return False
+
+        opd_day = self._get_opd_day(obj)
+        if opd_day is None or not opd_day.is_active:
+            return True
+
+        if not opd_day.started_at:
+            return True
+        late_cutoff = opd_day.started_at + timedelta(minutes=10)
+        return now() <= late_cutoff
+
+    def get_prescription(self, obj):
+        rx = _get_prescription_for(obj)
+        if not rx:
+            return None
+        return {
+            "diagnosis" : rx.diagnosis,
+            "medicines" : rx.medicines,
+            "created_at": rx.created_at,
+        }
+
+
+# ─────────────────────────────────────────────
+# PRESCRIPTION SERIALIZER
+# ─────────────────────────────────────────────
+
+class PrescriptionSerializer(serializers.ModelSerializer):
+    booking_id   = serializers.IntegerField(source="booking.id",           read_only=True)
+    token_number = serializers.IntegerField(source="booking.token_number", read_only=True)
+    booking_date = serializers.DateField(source="booking.booking_date",    read_only=True)
+    doctor_name  = serializers.SerializerMethodField()
+    hospital     = serializers.CharField(source="booking.doctor.hospital.name",   read_only=True)
+    department   = serializers.CharField(source="booking.doctor.department.name", read_only=True)
+
+    class Meta:
+        model  = Prescription
+        fields = [
+            "id", "booking_id", "token_number", "booking_date",
+            "doctor_name", "hospital", "department",
+            "diagnosis", "medicines",
+            "created_at", "updated_at",
+        ]
+
+    def get_doctor_name(self, obj):
+        d = obj.booking.doctor
+        return getattr(d, "full_name", None) or d.user.username

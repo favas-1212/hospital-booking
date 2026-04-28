@@ -242,3 +242,24 @@ class DoctorLeave(models.Model):
     def __str__(self):
         state = "ACTIVE" if self.is_active else "CANCELLED"
         return f"Leave Dr.{self.doctor_id} | {self.date} | {self.session} [{state}]"
+
+
+class Prescription(models.Model):
+    """
+    A diagnosis + prescription written by the doctor during consultation.
+    One prescription per booking (OneToOne).
+    Patients see this on their dashboard once the consultation is DONE.
+    """
+    booking = models.OneToOneField(
+        Booking, on_delete=models.CASCADE, related_name="prescription"
+    )
+    diagnosis  = models.TextField(blank=True, default="")
+    medicines  = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Rx for Token #{self.booking.token_number} ({self.booking.booking_date})"

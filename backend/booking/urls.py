@@ -54,6 +54,9 @@ from .views import (
     staff_apply_leave,
     staff_cancel_leave,
     staff_list_leaves,
+    patient_prescriptions,
+    doctor_get_prescription,
+    doctor_save_prescription
 )
 
 urlpatterns = [
@@ -106,6 +109,9 @@ urlpatterns = [
     path("staff/pending-doctors/",               pending_doctors,  name="pending-doctors"),
     path("staff/approve-doctor/<int:doctor_id>/", approve_doctor,  name="approve-doctor"),
     path("staff/reject-doctor/<int:doctor_id>/",  reject_doctor,   name="reject-doctor"),
+    path("doctor/prescription/<int:booking_id>/",       doctor_get_prescription,  name="doctor-get-prescription"),
+    path("doctor/prescription/<int:booking_id>/save/",  doctor_save_prescription, name="doctor-save-prescription"),
+    path("patient/prescriptions/",                       patient_prescriptions,    name="patient-prescriptions"),
 
     # Consultation history
     path("staff/consultation-history/",                 consultation_history,     name="consultation-history"),
