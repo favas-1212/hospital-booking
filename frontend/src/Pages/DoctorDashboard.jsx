@@ -407,22 +407,22 @@ export default function DoctorDashboard() {
                       )}
                     </div>
                     {!opdActive
-                      ? <span style={S.pillOff}>⚪ Not Started</span>
+                      ? <span style={S.pillOff}> Not Started</span>
                       : isSessPaused
                       ? <span style={{ ...S.pillOn, background:"#fef3c7", color:"#92400e" }}>⏸ Paused</span>
-                      : <span style={S.pillOn}>🟢 Active</span>
+                      : <span style={S.pillOn}> Active</span>
                     }
                   </div>
 
                   <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
                     {!opdActive ? (
                       <button onClick={() => handleStartOPD(sess)} disabled={!!acting} style={S.btnPrimary}>
-                        {isStarting ? "Starting..." : "▶ Start OPD"}
+                        {isStarting ? "Starting..." : " Start OPD"}
                       </button>
                     ) : (
                       <>
                         <button onClick={() => handleNextToken(sess)} disabled={!!acting} style={S.btnGlass}>
-                          {isNexting ? "Calling..." : "⏭ Next Token"}
+                          {isNexting ? "Calling..." : " Next Token"}
                         </button>
                         {!isSessPaused ? (
                           <button onClick={() => setPauseModal({ session: sess, action:"pause" })}
@@ -433,12 +433,12 @@ export default function DoctorDashboard() {
                         ) : (
                           <button onClick={() => handleResumeOPD(sess)} disabled={!!acting}
                             style={{ ...S.btnGlass, background:"rgba(134,239,172,0.2)", color:"#d1fae5", borderColor:"rgba(134,239,172,0.5)" }}>
-                            {isResuming ? "Resuming..." : "▶ Resume"}
+                            {isResuming ? "Resuming..." : " Resume"}
                           </button>
                         )}
                         <button onClick={() => setConfirmEnd({ session: sess })}
                           disabled={!!acting} style={S.btnDanger}>
-                          {isEnding ? "Ending..." : "⏹ End OPD"}
+                          {isEnding ? "Ending..." : " End OPD"}
                         </button>
                       </>
                     )}
@@ -456,7 +456,7 @@ export default function DoctorDashboard() {
                       Click below to begin the {sess} session for {date}
                     </p>
                     <button onClick={() => handleStartOPD(sess)} disabled={!!acting} style={{ ...S.btnPrimary, padding:"12px 32px", fontSize:15 }}>
-                      {isStarting ? "Starting..." : `▶ Start ${sess === "morning" ? "Morning" : "Evening"} OPD`}
+                      {isStarting ? "Starting..." : ` Start ${sess === "morning" ? "Morning" : "Evening"} OPD`}
                     </button>
                   </div>
                 )}
@@ -467,12 +467,12 @@ export default function DoctorDashboard() {
                     {/* Stats row */}
                     <div style={S.statsGrid}>
                       {[
-                        { label:"Waiting",     val: waitingCount,        color:"#5b21b6", bg:"#f5f3ff", icon:"⏳" },
-                        { label:"Consulting",  val: currentToken ? 1 : 0,color:"#065f46", bg:"#ecfdf5", icon:"🩺" },
-                        { label:"Done",        val: done.length,         color:"#1d4ed8", bg:"#eff6ff", icon:"✅" },
-                        { label:"Skipped",     val: skipped.length,      color:"#dc2626", bg:"#fff5f5", icon:"⏭" },
-                        { label:"Unconfirmed", val: unconfirmedCount,    color:"#92400e", bg:"#fffbeb", icon:"⚠️" },
-                        { label:"Avg Time",    val: `${avgMin}m`,        color:"#0369a1", bg:"#f0f9ff", icon:"⏱" },
+                        { label:"Waiting",     val: waitingCount,        color:"#5b21b6", bg:"#f5f3ff", icon:"" },
+                        { label:"Consulting",  val: currentToken ? 1 : 0,color:"#065f46", bg:"#ecfdf5", icon:"" },
+                        { label:"Done",        val: done.length,         color:"#1d4ed8", bg:"#eff6ff", icon:"" },
+                        { label:"Skipped",     val: skipped.length,      color:"#dc2626", bg:"#fff5f5", icon:"" },
+                        { label:"Unconfirmed", val: unconfirmedCount,    color:"#92400e", bg:"#fffbeb", icon:"" },
+                        { label:"Avg Time",    val: `${avgMin}m`,        color:"#0369a1", bg:"#f0f9ff", icon:"" },
                       ].map(s => (
                         <div key={s.label} style={{ ...S.statCard, background:s.bg }}>
                           <div style={{ fontSize:20 }}>{s.icon}</div>
@@ -519,10 +519,10 @@ export default function DoctorDashboard() {
                           <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
                             <button onClick={() => openRxModal(currentToken, sess, "edit")} disabled={!!acting}
                               style={{ ...S.btnGlass, background:"rgba(254,243,199,0.25)", color:"#fef3c7", borderColor:"rgba(254,243,199,0.4)" }}>
-                              📝 Add Diagnosis
+                               Add Diagnosis
                             </button>
                             <button onClick={() => handleNextToken(sess)} disabled={!!acting} style={S.btnGlass}>
-                              {isNexting ? "Calling..." : "✓ Done & Next"}
+                              {isNexting ? "Calling..." : " Done & Next"}
                             </button>
                             <button onClick={() => handleSkip(currentToken.id, currentToken.token)}
                               disabled={!!acting} style={S.btnDanger}>
@@ -570,7 +570,7 @@ export default function DoctorDashboard() {
                     <div style={S.tableCard}>
                       <div style={S.tableHeader}>
                         <h4 style={{ margin:0, fontSize:14, color:"#0f4c75", fontWeight:700, fontFamily:"'DM Sans',sans-serif" }}>
-                          📋 Queue — {sess} session
+                           Queue — {sess} session
                         </h4>
                         <div style={{ display:"flex", gap:8 }}>
                           {urgentCount > 0 && <span style={{ ...S.badge, background:"#f5f3ff", color:"#6d28d9" }}>{urgentCount} grace</span>}
@@ -593,7 +593,7 @@ export default function DoctorDashboard() {
                             </thead>
                             <tbody>
                               {consulting.map(t => (
-                                <QueueRow key={t.id} t={t} pos="🩺" acting={acting}
+                                <QueueRow key={t.id} t={t} pos="" acting={acting}
                                   rowBg="#ecfdf5"
                                   onSkip={handleSkip} onNext={() => handleNextToken(sess)}
                                   onConfirm={handleConfirm} onResend={handleResend}
@@ -647,7 +647,7 @@ export default function DoctorDashboard() {
                 { label:"Doctor", val:`Dr. ${dashboard.doctor}` },
                 {
                   label:"Sessions",
-                  val:`🌅 ${sessActive.morning ? "Morning Active" : "Morning Not Started"}  ·  🌆 ${sessActive.evening ? "Evening Active" : "Evening Not Started"}`,
+                  val:` ${sessActive.morning ? "Morning Active" : "Morning Not Started"}  ·   ${sessActive.evening ? "Evening Active" : "Evening Not Started"}`,
                 },
                 { label:"Avg Consult Time", val:`${avgMin} minutes` },
               ].map(item => (
@@ -681,7 +681,7 @@ export default function DoctorDashboard() {
               </div>
               <div style={{ textAlign:"center" }}>
                 <h3 style={{ margin:0, color:"#fff", fontSize:20, fontWeight:800, fontFamily:"'DM Sans',sans-serif" }}>
-                  💊 Diagnosis & Prescription
+                   Diagnosis & Prescription
                 </h3>
                 <p style={{ color:"#bae6fd", fontSize:13, margin:"6px 0 0", fontFamily:"'DM Sans',sans-serif" }}>
                   Token #{rxModal.booking.token} · {rxModal.booking.patient_name}
@@ -861,7 +861,7 @@ function QueueRow({ t, pos, rowBg, acting, onSkip, onNext, onConfirm, onResend, 
           color:      t.patient_type === "walkin" ? "#166534" : "#1d4ed8",
           fontFamily:"'DM Sans',sans-serif",
         }}>
-          {t.patient_type === "walkin" ? "🚶 Walk-in" : "🌐 Online"}
+          {t.patient_type === "walkin" ? " Walk-in" : " Online"}
         </span>
       </td>
       <td style={S.td}>
@@ -897,10 +897,10 @@ function QueueRow({ t, pos, rowBg, acting, onSkip, onNext, onConfirm, onResend, 
           {t.status === "waiting" && !t.is_confirmed && t.patient_type === "online" && (
             <>
               <button onClick={() => onConfirm(t.id, t.token)} disabled={!!acting} style={S.actionBtnGreen}>
-                {isActingConfirm ? "..." : "✔ Confirm"}
+                {isActingConfirm ? "..." : " Confirm"}
               </button>
               <button onClick={() => onResend(t.id, t.token)} disabled={!!acting} style={S.actionBtnBlue}>
-                {isActingResend ? "..." : "📧 Resend"}
+                {isActingResend ? "..." : " Resend"}
               </button>
               <button onClick={() => onSkip(t.id, t.token)} disabled={!!acting} style={S.actionBtnRed}>
                 {isActingSkip ? "..." : "Skip"}
@@ -910,7 +910,7 @@ function QueueRow({ t, pos, rowBg, acting, onSkip, onNext, onConfirm, onResend, 
           {t.status === "consulting" && (
             <button onClick={onNext} disabled={!!acting}
               style={{ ...S.actionBtnGreen, background:"#d1fae5", color:"#065f46" }}>
-              {isNexting ? "..." : "✓ Done"}
+              {isNexting ? "..." : " Done"}
             </button>
           )}
         </div>
@@ -929,7 +929,7 @@ const Spinner = () => (
 );
 const Empty = ({ text }) => (
   <div style={{ textAlign:"center", padding:"80px 40px" }}>
-    <div style={{ fontSize:48, marginBottom:12 }}>📋</div>
+    <div style={{ fontSize:48, marginBottom:12 }}></div>
     <h4 style={{ color:"#1e293b", margin:0, fontFamily:"'DM Sans',sans-serif" }}>{text}</h4>
   </div>
 );

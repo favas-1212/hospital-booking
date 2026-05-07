@@ -6,7 +6,7 @@ function AppNavbar() {
   const navigate = useNavigate();
 
   const token = sessionStorage.getItem("token");
-  const username =sessionStorage.getItem("username");
+  const username = sessionStorage.getItem("username");
 
   const handleLogout = () => {
     sessionStorage.removeItem("token");
@@ -17,6 +17,7 @@ function AppNavbar() {
 
   return (
     <Navbar
+      fixed="top"
       expand="lg"
       style={{
         background: "linear-gradient(90deg, #ecedee, #f0f5f4)",
@@ -68,7 +69,7 @@ function AppNavbar() {
 
             {token ? (
               <>
-                <span className="text-dark ">
+                <span className="text-dark">
                   Hello, {username}
                 </span>
 

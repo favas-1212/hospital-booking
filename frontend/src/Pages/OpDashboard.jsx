@@ -350,10 +350,10 @@ function OpDashboard() {
               fontWeight: activeTab === i ? 700 : 500,
               boxShadow:  activeTab === i ? "0 2px 12px rgba(15,76,117,0.3)" : "none",
             }}>
-              {tab === "OPD Management"       && "🗂 "}
-              {tab === "Doctor Leave"         && "🛌 "}
-              {tab === "Doctor Approvals"     && "👨‍⚕️ "}
-              {tab === "Consultation History" && "📋 "}
+              {tab === "OPD Management"       && " "}
+              {tab === "Doctor Leave"         && " "}
+              {tab === "Doctor Approvals"     && " "}
+              {tab === "Consultation History" && " "}
               {tab}
               {tab === "Doctor Approvals" && pendingDocs.length > 0 && (
                 <span style={S.notifBadge}>{pendingDocs.length}</span>
@@ -646,7 +646,7 @@ function OpDashboard() {
           <h3 style={{ ...S.sectionTitle, marginTop:28 }}>Active &amp; Upcoming Leaves</h3>
 
           {leavesLoading ? <Spinner /> : leaves.length === 0 ? (
-            <Empty text="No active leaves" icon="✅" />
+            <Empty text="No active leaves" icon="" />
           ) : (
             <div style={{ overflowX:"auto" }}>
               <table style={S.table}>
@@ -696,7 +696,7 @@ function OpDashboard() {
           </div>
 
           {docsLoading ? <Spinner /> : pendingDocs.length === 0 ? (
-            <Empty text="No pending doctor registrations" icon="✅" />
+            <Empty text="No pending doctor registrations" icon="" />
           ) : (
             <div style={{ display:"grid", gap:14 }}>
               {pendingDocs.map(doc => (
